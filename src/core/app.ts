@@ -1,11 +1,5 @@
-import { Hono } from "hono";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { isValidId } from "../shared/link.js";
-import {
-  MAX_REQUEST_BYTES,
-  RATE_LIMITS,
-  type HashEnvironment,
-} from "../shared/protocol.js";
+import { MAX_REQUEST_BYTES, RATE_LIMITS, type HashEnvironment } from "../shared/protocol.js";
 import { HttpError } from "./errors.js";
 import { applySecurityHeaders, headerKind } from "./headers.js";
 import { pepperProblem, rateBucket } from "./rate-key.js";
@@ -21,8 +15,22 @@ export interface HashRuntime {
   serve: (request: Request) => Promise<Response> | Response;
 }
 
+export interface HashApp {
+  fetch(request: Request): Promise<Response>;
+}
+
 function log(event: string, fields: Record<string, string | number | boolean> = {}): void {
   console.log(JSON.stringify({ event, ...fields }));
+}
+
+function json(body: unknown, status: number, extra?: Record<string, string>): Response {
+  const headers = new Headers(extra);
+  headers.set("content-type", "application/json; charset=utf-8");
+  return new Response(JSON.stringify(body), { status, headers });
+}
+
+function text(body: string, status: number): Response {
+  return new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
 async function readJson(request: Request): Promise<unknown> {
@@ -59,36 +67,33 @@ function resolveIp(runtime: HashRuntime, request: Request): string {
   return "local";
 }
 
-export function createApp(runtime: HashRuntime): Hono {
-  const app = new Hono();
+function withSecurity(response: Response, request: Request): Response {
+  const headers = new Headers(response.headers);
+  applySecurityHeaders(headers, request, headerKind(new URL(request.url).pathname));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
 
-  app.use("*", async (c, next) => {
-    await next();
-    const headers = new Headers(c.res.headers);
-    applySecurityHeaders(headers, c.req.raw, headerKind(c.req.path));
-    c.res = new Response(c.res.body, {
-      status: c.res.status,
-      statusText: c.res.statusText,
-      headers,
-    });
-  });
+function errorResponse(error: unknown): Response {
+  if (error instanceof HttpError) {
+    const extra = error.extra?.retryAfter !== undefined ? { "retry-after": String(error.extra.retryAfter) } : undefined;
+    return json(error.body(), error.status, extra);
+  }
+  if (error instanceof StorageUnavailable) {
+    log("storage.unavailable");
+    return json({ error: "unavailable" }, 503);
+  }
+  log("unhandled", { name: error instanceof Error ? error.name : "Error" });
+  return json({ error: "internal" }, 500);
+}
 
-  app.onError((err, c) => {
-    if (err instanceof HttpError) {
-      const headers = err.extra?.retryAfter !== undefined ? { "retry-after": String(err.extra.retryAfter) } : undefined;
-      return c.json(err.body(), err.status as ContentfulStatusCode, headers);
-    }
-    if (err instanceof StorageUnavailable) {
-      log("storage.unavailable");
-      return c.json({ error: "unavailable" }, 503);
-    }
-    log("unhandled", { name: err instanceof Error ? err.name : "Error" });
-    return c.json({ error: "internal" }, 500);
-  });
+async function dispatch(runtime: HashRuntime, request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  const { pathname } = url;
+  const method = request.method;
 
-  const health = (c: { json: (body: unknown) => Response }) => c.json({ ok: true });
-  app.get("/healthz", health);
-  app.get("/health", health);
+  if ((pathname === "/healthz" || pathname === "/health") && method === "GET") {
+    return json({ ok: true }, 200);
+  }
 
   const rejectPepper = (op: "create" | "open"): void => {
     const problem = pepperProblem(runtime.environment, runtime.pepper);
@@ -97,10 +102,11 @@ export function createApp(runtime: HashRuntime): Hono {
     throw new HttpError(503, "misconfigured");
   };
 
-  app.post("/api/snippets", async (c) => {
-    if (!sameOrigin(c.req.raw)) throw new HttpError(403, "origin");
+  if (pathname === "/api/snippets") {
+    if (method !== "POST") return json({ error: "method" }, 405, { allow: "POST" });
+    if (!sameOrigin(request)) throw new HttpError(403, "origin");
     rejectPepper("create");
-    const ip = resolveIp(runtime, c.req.raw);
+    const ip = resolveIp(runtime, request);
     const decision = await runtime.rateLimit.consume(
       await rateBucket(runtime.pepper, ip, "create"),
       RATE_LIMITS.create.limit,
@@ -111,23 +117,25 @@ export function createApp(runtime: HashRuntime): Hono {
       const retryAfter = Math.max(1, Math.ceil(decision.retryAfterMs / 1000));
       throw new HttpError(429, "rate_limited", undefined, { retryAfter });
     }
-    const parsed = parseCreateBody(await readJson(c.req.raw), Date.now(), runtime.environment);
+    const parsed = parseCreateBody(await readJson(request), Date.now(), runtime.environment);
     if (!parsed.ok) throw new HttpError(parsed.status, parsed.error, parsed.field);
     const record: SnippetRecord = { ...parsed.value, createdAt: Date.now() };
     const result = await runtime.store.create(record);
     if (result === "conflict") throw new HttpError(409, "conflict");
     log("snippet.create", { burn: record.burnAfterRead });
-    return c.json({ id: record.id, expiresAt: record.expiresAt, burnAfterRead: record.burnAfterRead }, 201);
-  });
+    return json({ id: record.id, expiresAt: record.expiresAt, burnAfterRead: record.burnAfterRead }, 201);
+  }
 
-  app.post("/api/snippets/:id/open", async (c) => {
-    if (!sameOrigin(c.req.raw)) throw new HttpError(403, "origin");
+  const openMatch = /^\/api\/snippets\/([^/]+)\/open$/.exec(pathname);
+  if (openMatch) {
+    if (method !== "POST") return json({ error: "method" }, 405, { allow: "POST" });
+    if (!sameOrigin(request)) throw new HttpError(403, "origin");
     rejectPepper("open");
-    const id = c.req.param("id");
-    if (!isValidId(id)) return c.json({ error: "gone", reason: "missing" }, 404);
-    const length = c.req.raw.headers.get("content-length");
+    const id = openMatch[1] ?? "";
+    if (!isValidId(id)) return json({ error: "gone", reason: "missing" }, 404);
+    const length = request.headers.get("content-length");
     if (length !== null && Number(length) > 1024) throw new HttpError(413, "too_large");
-    const ip = resolveIp(runtime, c.req.raw);
+    const ip = resolveIp(runtime, request);
     const decision = await runtime.rateLimit.consume(
       await rateBucket(runtime.pepper, ip, "open"),
       RATE_LIMITS.open.limit,
@@ -141,34 +149,36 @@ export function createApp(runtime: HashRuntime): Hono {
     const opened = await runtime.store.open(id, Date.now());
     if (opened.status === "gone") {
       const status = opened.reason === "missing" ? 404 : 410;
-      return c.json({ error: "gone", reason: opened.reason }, status);
+      return json({ error: "gone", reason: opened.reason }, status);
     }
     log("snippet.open", { burn: opened.burned });
-    return c.json({
-      v: 1,
-      id: opened.record.id,
-      ciphertext: opened.record.ciphertext,
-      nonce: opened.record.nonce,
-      salt: opened.record.salt,
-      kdf: opened.record.kdf,
-      expiresAt: opened.record.expiresAt,
-      burnAfterRead: opened.record.burnAfterRead,
-    });
-  });
+    return json(
+      {
+        v: 1,
+        id: opened.record.id,
+        ciphertext: opened.record.ciphertext,
+        nonce: opened.record.nonce,
+        salt: opened.record.salt,
+        kdf: opened.record.kdf,
+        expiresAt: opened.record.expiresAt,
+        burnAfterRead: opened.record.burnAfterRead,
+      },
+      200,
+    );
+  }
 
-  app.on(["GET", "PUT", "PATCH", "DELETE"], "/api/snippets", (c) => {
-    return c.json({ error: "method" }, 405, { allow: "POST" });
-  });
-  app.on(["GET", "PUT", "PATCH", "DELETE"], "/api/snippets/:id/open", (c) => {
-    return c.json({ error: "method" }, 405, { allow: "POST" });
-  });
+  if (method !== "GET" && method !== "HEAD") return text("Not found", 404);
+  return runtime.serve(request);
+}
 
-  app.all("*", async (c) => {
-    if (c.req.method !== "GET" && c.req.method !== "HEAD") {
-      return c.text("Not found", 404);
-    }
-    return runtime.serve(c.req.raw);
-  });
-
-  return app;
+export function createApp(runtime: HashRuntime): HashApp {
+  return {
+    async fetch(request) {
+      try {
+        return withSecurity(await dispatch(runtime, request), request);
+      } catch (error) {
+        return withSecurity(errorResponse(error), request);
+      }
+    },
+  };
 }

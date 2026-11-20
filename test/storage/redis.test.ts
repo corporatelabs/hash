@@ -1,5 +1,5 @@
-import { Redis } from "ioredis";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { MiniRedis } from "../../src/storage/redis-client.js";
 import { RedisBackend } from "../../src/storage/redis.js";
 import { sampleRecord } from "../helpers/record.js";
 
@@ -7,13 +7,13 @@ const url = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
 let backend: RedisBackend | null = null;
 
 async function connect(): Promise<RedisBackend | null> {
-  const probe = new Redis(url, { lazyConnect: true, connectTimeout: 400, maxRetriesPerRequest: 1 });
+  let probe: MiniRedis | null = null;
   try {
-    await probe.connect();
+    probe = await MiniRedis.connect(url, 400);
     await probe.ping();
     await probe.quit();
   } catch {
-    probe.disconnect();
+    probe?.disconnect();
     return null;
   }
   const prefix = `hash:test:${crypto.randomUUID()}`;

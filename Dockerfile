@@ -4,11 +4,8 @@
 
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ \
-  && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json .npmrc ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build:client && npm run build:server \
   && npm prune --omit=dev

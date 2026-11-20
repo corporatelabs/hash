@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import Database from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 import { TOMBSTONE_MS, type GoneReason, type KdfParams } from "../shared/protocol.js";
 import {
   sameSnippet,
@@ -32,6 +32,32 @@ interface TombRow {
   until_ms: number;
 }
 
+function num(value: unknown): number {
+  return typeof value === "bigint" ? Number(value) : Number(value);
+}
+
+function asActive(row: Record<string, unknown> | undefined): ActiveRow | undefined {
+  if (!row) return undefined;
+  return {
+    id: String(row.id),
+    ciphertext: String(row.ciphertext),
+    nonce: String(row.nonce),
+    salt: String(row.salt),
+    kdf_m: num(row.kdf_m),
+    kdf_t: num(row.kdf_t),
+    kdf_p: num(row.kdf_p),
+    kdf_hash_len: num(row.kdf_hash_len),
+    expires_at: num(row.expires_at),
+    burn_after_read: num(row.burn_after_read),
+    created_at: num(row.created_at),
+  };
+}
+
+function asTomb(row: Record<string, unknown> | undefined): TombRow | undefined {
+  if (!row) return undefined;
+  return { id: String(row.id), reason: String(row.reason), until_ms: num(row.until_ms) };
+}
+
 function rowToRecord(row: ActiveRow): SnippetRecord {
   const kdf: KdfParams = {
     name: "argon2id",
@@ -57,19 +83,32 @@ function asGone(reason: string): GoneReason {
   return reason === "expired" || reason === "burned" ? reason : "missing";
 }
 
-/**
- * SQLite store. Burn and expiry both use `DELETE ... RETURNING` inside an
- * IMMEDIATE transaction, so a concurrent opener cannot observe the ciphertext
- * after the winning statement.
- */
-type SqliteHandle = InstanceType<typeof Database>;
+function immediate<T>(db: DatabaseSync, fn: () => T): T {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const value = fn();
+    db.exec("COMMIT");
+    return value;
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // The transaction is already closed.
+    }
+    throw error;
+  }
+}
 
+/**
+ * SQLite store on Node's built-in `node:sqlite`. Burn and expiry use
+ * `DELETE ... RETURNING` inside an IMMEDIATE transaction.
+ */
 export class SqliteBackend {
   readonly snippets: SnippetStore;
   readonly rateLimit: RateLimitStore;
-  private readonly db: SqliteHandle;
+  private readonly db: DatabaseSync;
 
-  private constructor(db: SqliteHandle) {
+  private constructor(db: DatabaseSync) {
     this.db = db;
     db.exec(`
       CREATE TABLE IF NOT EXISTS snippets (
@@ -97,128 +136,127 @@ export class SqliteBackend {
       ) STRICT;
     `);
 
-    const read = db.prepare<[string], ActiveRow>("SELECT * FROM snippets WHERE id = ?");
-    const expire = db.prepare<[string, number], ActiveRow>(
-      "DELETE FROM snippets WHERE id = ? AND expires_at <= ? RETURNING *",
-    );
-    const burn = db.prepare<[string], ActiveRow>(
-      "DELETE FROM snippets WHERE id = ? AND burn_after_read = 1 RETURNING *",
-    );
+    const read = db.prepare("SELECT * FROM snippets WHERE id = ?");
+    const expire = db.prepare("DELETE FROM snippets WHERE id = ? AND expires_at <= ? RETURNING *");
+    const burn = db.prepare("DELETE FROM snippets WHERE id = ? AND burn_after_read = 1 RETURNING *");
     const tombstone = db.prepare(
       `INSERT INTO tombstones (id, reason, until_ms) VALUES (?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET reason = excluded.reason, until_ms = excluded.until_ms`,
     );
-    const readTomb = db.prepare<[string], TombRow>("SELECT id, reason, until_ms FROM tombstones WHERE id = ?");
+    const readTomb = db.prepare("SELECT id, reason, until_ms FROM tombstones WHERE id = ?");
     const deleteTomb = db.prepare("DELETE FROM tombstones WHERE id = ?");
     const insert = db.prepare(
       `INSERT INTO snippets (
         id, ciphertext, nonce, salt, kdf_m, kdf_t, kdf_p, kdf_hash_len, expires_at, burn_after_read, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
-
-    const openTx = db.transaction((id: string, now: number): OpenResult => {
-      const expired = expire.get(id, now);
-      if (expired) {
-        tombstone.run(id, "expired", now + TOMBSTONE_MS);
-        return { status: "gone", reason: "expired" };
-      }
-      const burned = burn.get(id);
-      if (burned) {
-        tombstone.run(id, "burned", now + TOMBSTONE_MS);
-        return { status: "ok", burned: true, record: rowToRecord(burned) };
-      }
-      const live = read.get(id);
-      if (live) return { status: "ok", burned: false, record: rowToRecord(live) };
-      const tomb = readTomb.get(id);
-      if (!tomb || tomb.until_ms <= now) {
-        if (tomb) deleteTomb.run(id);
-        return { status: "gone", reason: "missing" };
-      }
-      return { status: "gone", reason: asGone(tomb.reason) };
-    });
-
-    const createTx = db.transaction((record: SnippetRecord): "created" | "conflict" => {
-      const existing = read.get(record.id);
-      if (existing) return sameSnippet(rowToRecord(existing), record) ? "created" : "conflict";
-      if (readTomb.get(record.id)) return "conflict";
-      insert.run(
-        record.id,
-        record.ciphertext,
-        record.nonce,
-        record.salt,
-        record.kdf.m,
-        record.kdf.t,
-        record.kdf.p,
-        record.kdf.hashLen,
-        record.expiresAt,
-        record.burnAfterRead ? 1 : 0,
-        record.createdAt,
-      );
-      return "created";
-    });
-
-    const rateGet = db.prepare<[string], { count: number; window_start: number }>(
-      "SELECT count, window_start FROM rate_limits WHERE bucket = ?",
-    );
+    const rateGet = db.prepare("SELECT count, window_start FROM rate_limits WHERE bucket = ?");
     const rateUpsert = db.prepare(
       `INSERT INTO rate_limits (bucket, count, window_start) VALUES (?, ?, ?)
        ON CONFLICT(bucket) DO UPDATE SET count = excluded.count, window_start = excluded.window_start`,
     );
     const rateInc = db.prepare("UPDATE rate_limits SET count = count + 1 WHERE bucket = ?");
-    const rateTx = db.transaction((bucket: string, limit: number, windowMs: number, now: number): RateDecision | RateRejection => {
-      const row = rateGet.get(bucket);
-      if (!row || now - row.window_start >= windowMs) {
-        rateUpsert.run(bucket, 1, now);
-        return { allowed: true };
-      }
-      if (row.count >= limit) {
-        return { allowed: false, retryAfterMs: Math.max(1, windowMs - (now - row.window_start)) };
-      }
-      rateInc.run(bucket);
-      return { allowed: true };
-    });
 
     this.snippets = {
-      create: (record) => Promise.resolve(createTx.immediate(record)),
-      open: (id, now) => Promise.resolve(openTx.immediate(id, now)),
+      create: (record) =>
+        Promise.resolve(
+          immediate(db, (): "created" | "conflict" => {
+            const existing = asActive(read.get(record.id) as Record<string, unknown> | undefined);
+            if (existing) return sameSnippet(rowToRecord(existing), record) ? "created" : "conflict";
+            if (asTomb(readTomb.get(record.id) as Record<string, unknown> | undefined)) return "conflict";
+            insert.run(
+              record.id,
+              record.ciphertext,
+              record.nonce,
+              record.salt,
+              record.kdf.m,
+              record.kdf.t,
+              record.kdf.p,
+              record.kdf.hashLen,
+              record.expiresAt,
+              record.burnAfterRead ? 1 : 0,
+              record.createdAt,
+            );
+            return "created";
+          }),
+        ),
+      open: (id, now) =>
+        Promise.resolve(
+          immediate(db, (): OpenResult => {
+            const expired = asActive(expire.get(id, now) as Record<string, unknown> | undefined);
+            if (expired) {
+              tombstone.run(id, "expired", now + TOMBSTONE_MS);
+              return { status: "gone", reason: "expired" };
+            }
+            const burned = asActive(burn.get(id) as Record<string, unknown> | undefined);
+            if (burned) {
+              tombstone.run(id, "burned", now + TOMBSTONE_MS);
+              return { status: "ok", burned: true, record: rowToRecord(burned) };
+            }
+            const live = asActive(read.get(id) as Record<string, unknown> | undefined);
+            if (live) return { status: "ok", burned: false, record: rowToRecord(live) };
+            const tomb = asTomb(readTomb.get(id) as Record<string, unknown> | undefined);
+            if (!tomb || tomb.until_ms <= now) {
+              if (tomb) deleteTomb.run(id);
+              return { status: "gone", reason: "missing" };
+            }
+            return { status: "gone", reason: asGone(tomb.reason) };
+          }),
+        ),
     };
     this.rateLimit = {
-      consume: (bucket, limit, windowMs, now) => Promise.resolve(rateTx.immediate(bucket, limit, windowMs, now)),
+      consume: (bucket, limit, windowMs, now) =>
+        Promise.resolve(
+          immediate(db, (): RateDecision | RateRejection => {
+            const row = rateGet.get(bucket) as Record<string, unknown> | undefined;
+            const count = row ? num(row.count) : 0;
+            const windowStart = row ? num(row.window_start) : 0;
+            if (!row || now - windowStart >= windowMs) {
+              rateUpsert.run(bucket, 1, now);
+              return { allowed: true };
+            }
+            if (count >= limit) {
+              return { allowed: false, retryAfterMs: Math.max(1, windowMs - (now - windowStart)) };
+            }
+            rateInc.run(bucket);
+            return { allowed: true };
+          }),
+        ),
     };
   }
 
   static open(path: string): SqliteBackend {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
-    const db = new Database(path, { timeout: 5000 });
-    db.pragma("journal_mode = WAL");
-    db.pragma("secure_delete = ON");
-    db.pragma("foreign_keys = ON");
-    db.pragma("busy_timeout = 5000");
+    const db = new DatabaseSync(path, { timeout: 5000 });
+    db.exec("PRAGMA journal_mode = WAL");
+    db.exec("PRAGMA secure_delete = ON");
+    db.exec("PRAGMA foreign_keys = ON");
     return new SqliteBackend(db);
   }
 
   sweep(now: number): void {
-    const sweepTx = this.db.transaction(() => {
-      const due = this.db.prepare<[number], { id: string }>("SELECT id FROM snippets WHERE expires_at <= ?").all(now);
+    immediate(this.db, () => {
+      const due = this.db.prepare("SELECT id FROM snippets WHERE expires_at <= ?").all(now) as Array<Record<string, unknown>>;
       const expire = this.db.prepare("DELETE FROM snippets WHERE id = ? AND expires_at <= ?");
       const tomb = this.db.prepare(
         `INSERT INTO tombstones (id, reason, until_ms) VALUES (?, 'expired', ?)
          ON CONFLICT(id) DO UPDATE SET reason = 'expired', until_ms = excluded.until_ms`,
       );
       for (const row of due) {
-        expire.run(row.id, now);
-        tomb.run(row.id, now + TOMBSTONE_MS);
+        const id = String(row.id);
+        expire.run(id, now);
+        tomb.run(id, now + TOMBSTONE_MS);
       }
       this.db.prepare("DELETE FROM tombstones WHERE until_ms <= ?").run(now);
       this.db.prepare("DELETE FROM rate_limits WHERE window_start <= ?").run(now - TOMBSTONE_MS);
     });
-    sweepTx.immediate();
   }
 
-  /** Test aid: ciphertext column is gone after a burn or expiry. */
   ciphertextStored(id: string): boolean {
-    const row = this.db.prepare<[string], { ciphertext: string }>("SELECT ciphertext FROM snippets WHERE id = ?").get(id);
-    return row !== undefined && row.ciphertext.length > 0;
+    const row = this.db.prepare("SELECT ciphertext FROM snippets WHERE id = ?").get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row !== undefined && String(row.ciphertext).length > 0;
   }
 
   close(): void {

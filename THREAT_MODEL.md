@@ -79,7 +79,7 @@ A short human password is the weak point once the link has leaked. Generated pas
 
 The page is static, self-hosted, and has no inline script. The content security policy is `default-src 'none'` with `script-src 'self' 'wasm-unsafe-eval'` (hash-wasm compiles WebAssembly), `worker-src 'self'`, and no third-party hosts. Snippets are inserted with `textContent`. Subresource integrity covers the document's script and stylesheet. The crypto worker is same-origin. `Worker` still has no reliable integrity attribute, so we do not widen `worker-src` to `blob:`.
 
-Dependencies are pinned by the lockfile. CI fails closed on GPL-family and similar copyleft licenses. A compromised npm package that runs in the browser can read the password. Review updates to hash-wasm with that in mind. Fonts are SIL OFL and self-hosted.
+The Worker and the default Node server have no runtime npm dependencies. Argon2id is the vendored hash-wasm 4.13.0 file described in [DEPENDENCIES.md](DEPENDENCIES.md), checked by sha256. A change to that file can read the password in the browser, so the hash is compared in CI. Fonts are SIL OFL and copied in at build time. Dev tooling stays in `devDependencies` and is not in the container. CI fails if `package.json` `dependencies` gains an entry that is not on the allowlist, and it fails closed on GPL-family licenses in the production tree.
 
 ### Metadata leakage
 

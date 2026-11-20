@@ -1,5 +1,4 @@
 import { SqliteBackend } from "../../storage/sqlite.js";
-import { RedisBackend } from "../../storage/redis.js";
 import { createFileServer } from "./static.js";
 import { startHttpServer } from "./server.js";
 import { DEV_PEPPER, parseEnvironment, type HashEnvironment } from "../../shared/protocol.js";
@@ -49,6 +48,7 @@ async function openStores(settings: Settings): Promise<{
 }> {
   if (settings.storage === "redis") {
     if (!settings.redisUrl) throw new Error("REDIS_URL is required when STORAGE=redis");
+    const { RedisBackend } = await import("../../storage/redis.js");
     const redis = await RedisBackend.connect(settings.redisUrl);
     return { snippets: redis.snippets, rateLimit: redis.rateLimit, sweep: (now) => redis.sweep(now), close: () => redis.close() };
   }

@@ -1,4 +1,4 @@
-import { argon2id } from "hash-wasm";
+import { argon2id } from "../../vendor/hash-wasm/index.esm.js";
 import { encodeAad } from "./aad.js";
 import { bytesToBase64, randomBytes, utf8, wipe } from "./bytes.js";
 import {

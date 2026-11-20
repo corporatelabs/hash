@@ -1,5 +1,4 @@
-import { serve, type ServerType } from "@hono/node-server";
-import type { IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createApp, type HashRuntime } from "../../core/app.js";
 import { nodeClientAddress } from "./ip.js";
 
@@ -8,12 +7,35 @@ export interface RunningServer {
   close(): Promise<void>;
 }
 
-interface NodeBindings {
-  incoming: IncomingMessage;
+function readBody(req: IncomingMessage): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => resolve(new Uint8Array(Buffer.concat(chunks))));
+    req.on("error", reject);
+  });
 }
 
-function isNodeBindings(value: unknown): value is NodeBindings {
-  return typeof value === "object" && value !== null && "incoming" in value;
+async function toRequest(req: IncomingMessage): Promise<Request> {
+  const host = req.headers.host ?? "localhost";
+  const url = new URL(req.url ?? "/", `http://${host}`);
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value === undefined) continue;
+    headers.set(key, Array.isArray(value) ? value.join(", ") : value);
+  }
+  const method = req.method ?? "GET";
+  if (method === "GET" || method === "HEAD") return new Request(url, { method, headers });
+  const body = await readBody(req);
+  return new Request(url, { method, headers, body });
+}
+
+async function writeResponse(req: IncomingMessage, res: ServerResponse, response: Response): Promise<void> {
+  const headers = Object.fromEntries(response.headers.entries());
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  res.writeHead(response.status, headers);
+  if (req.method === "HEAD") res.end();
+  else res.end(bytes);
 }
 
 export async function startHttpServer(options: {
@@ -21,7 +43,6 @@ export async function startHttpServer(options: {
   host: string;
   port: number;
 }): Promise<RunningServer> {
-  const remotes = new WeakMap<Request, string | null>();
   const app = createApp({
     environment: options.runtime.environment,
     pepper: options.runtime.pepper,
@@ -30,29 +51,37 @@ export async function startHttpServer(options: {
     serve: options.runtime.serve,
     clientAddress: (request) => nodeClientAddress(request, remotes.get(request) ?? null, options.runtime.trustProxy),
   });
+  const remotes = new WeakMap<Request, string | null>();
 
-  let server!: ServerType;
-  const port = await new Promise<number>((resolve) => {
-    server = serve(
-      {
-        fetch: (request, env) => {
-          const remote = isNodeBindings(env) ? (env.incoming.socket.remoteAddress ?? null) : null;
-          remotes.set(request, remote);
-          return app.fetch(request);
-        },
-        hostname: options.host,
-        port: options.port,
-      },
-      (info) => resolve(info.port),
-    );
+  const server = createServer((req, res) => {
+    void (async () => {
+      try {
+        const request = await toRequest(req);
+        remotes.set(request, req.socket.remoteAddress ?? null);
+        const response = await app.fetch(request);
+        await writeResponse(req, res, response);
+      } catch {
+        if (!res.headersSent) {
+          res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: "internal" }));
+        } else {
+          res.end();
+        }
+      }
+    })();
   });
-  return {
-    port,
-    close: () => closeServer(server),
-  };
+
+  const port = await new Promise<number>((resolve) => {
+    server.listen(options.port, options.host, () => {
+      const address = server.address();
+      resolve(address && typeof address === "object" ? address.port : options.port);
+    });
+  });
+
+  return { port, close: () => closeServer(server) };
 }
 
-function closeServer(server: ServerType): Promise<void> {
+function closeServer(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
   });

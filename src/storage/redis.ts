@@ -1,4 +1,4 @@
-import { Redis } from "ioredis";
+import { MiniRedis } from "./redis-client.js";
 import { TOMBSTONE_MS, type GoneReason, type KdfParams } from "../shared/protocol.js";
 import {
   sameSnippet,
@@ -165,7 +165,7 @@ export class RedisBackend {
   readonly rateLimit: RateLimitStore;
 
   constructor(
-    private readonly redis: Redis,
+    private readonly redis: MiniRedis,
     private readonly prefix = "hash:v1",
   ) {
     this.snippets = {
@@ -178,17 +178,11 @@ export class RedisBackend {
   }
 
   static async connect(url: string, prefix = "hash:v1"): Promise<RedisBackend> {
-    const redis = new Redis(url, {
-      maxRetriesPerRequest: 2,
-      enableReadyCheck: true,
-      connectTimeout: 2_000,
-      lazyConnect: true,
-    });
+    let redis: MiniRedis;
     try {
-      await redis.connect();
+      redis = await MiniRedis.connect(url);
       await redis.ping();
     } catch (error) {
-      redis.disconnect();
       unavailable(error);
     }
     return new RedisBackend(redis, prefix);

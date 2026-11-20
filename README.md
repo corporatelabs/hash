@@ -29,7 +29,7 @@ sequenceDiagram
   B->>B: decrypt locally
 ```
 
-Argon2id uses 64 MiB, t = 3, p = 1, via hash-wasm. HKDF-SHA-256 mixes in a 256-bit fragment from the URL. AES-256-GCM is WebCrypto. Additional data binds the id, salt, expiry, burn flag, and KDF parameters. Details and limits are in [THREAT_MODEL.md](THREAT_MODEL.md).
+Argon2id uses 64 MiB, t = 3, p = 1. That KDF is the vendored hash-wasm 4.13.0 build, because WebCrypto has no Argon2. HKDF-SHA-256 mixes in a 256-bit fragment from the URL. AES-256-GCM is WebCrypto. Additional data binds the id, salt, expiry, burn flag, and KDF parameters. The API and the Node server use no runtime npm packages. Details are in [DEPENDENCIES.md](DEPENDENCIES.md) and [THREAT_MODEL.md](THREAT_MODEL.md).
 
 One-time snippets are deleted in the same storage operation that returns them. The server cannot check the password, so a wrong password on a burn link destroys the ciphertext. The page says so.
 

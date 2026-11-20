@@ -36,7 +36,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
@@ -52,7 +52,8 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
+      - run: node scripts/check-runtime-deps.mjs
       - run: docker build -t hash:ci .
       - run: bash scripts/docker-smoke.sh
       - name: Trivy

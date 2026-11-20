@@ -31,7 +31,6 @@ async function race(dbPath: string, id: string, now: number, count: number): Pro
     platform: "node",
     format: "esm",
     outfile,
-    external: ["better-sqlite3"],
   });
   const runs = Array.from({ length: count }, () =>
     new Promise<OpenResult>((resolve, reject) => {
