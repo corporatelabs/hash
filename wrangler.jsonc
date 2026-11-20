@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "hash",
+  "main": "src/adapters/cloudflare/worker.ts",
+  "compatibility_date": "2026-11-20",
+  "upload_source_maps": true,
+  // Uncomment the route before `wrangler deploy` to attach the custom domain.
+  // The zone hash.corporatelabs.ai is already on Cloudflare. Leaving this commented
+  // keeps a deploy from changing DNS until you opt in.
+  // "routes": [
+  //   { "pattern": "hash.corporatelabs.ai", "custom_domain": true }
+  // ],
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 1 }
+  },
+  "vars": {
+    "ENVIRONMENT": "production",
+    "RATE_LIMIT_PEPPER": "development-only-pepper"
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "SNIPPETS", "class_name": "SnippetObject" },
+      { "name": "RATE_LIMITER", "class_name": "RateLimiter" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SnippetObject", "RateLimiter"] }
+  ],
+  "build": {
+    "command": "node scripts/build-client.mjs"
+  }
+}
