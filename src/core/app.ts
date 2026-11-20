@@ -90,16 +90,16 @@ export function createApp(runtime: HashRuntime): Hono {
   app.get("/healthz", health);
   app.get("/health", health);
 
+  const rejectPepper = (op: "create" | "open"): void => {
+    const problem = pepperProblem(runtime.environment, runtime.pepper);
+    if (!problem) return;
+    log("misconfigured", { op, problem });
+    throw new HttpError(503, "misconfigured");
+  };
+
   app.post("/api/snippets", async (c) => {
     if (!sameOrigin(c.req.raw)) throw new HttpError(403, "origin");
-    const pepper = pepperProblem(runtime.environment, runtime.pepper);
-    if (pepper === "short_pepper") {
-      log("misconfigured", { op: "create" });
-      throw new HttpError(503, "misconfigured");
-    }
-    if (pepper === "dev_pepper") {
-      log("pepper.placeholder", { op: "create" });
-    }
+    rejectPepper("create");
     const ip = resolveIp(runtime, c.req.raw);
     const decision = await runtime.rateLimit.consume(
       await rateBucket(runtime.pepper, ip, "create"),
@@ -122,6 +122,7 @@ export function createApp(runtime: HashRuntime): Hono {
 
   app.post("/api/snippets/:id/open", async (c) => {
     if (!sameOrigin(c.req.raw)) throw new HttpError(403, "origin");
+    rejectPepper("open");
     const id = c.req.param("id");
     if (!isValidId(id)) return c.json({ error: "gone", reason: "missing" }, 404);
     const length = c.req.raw.headers.get("content-length");

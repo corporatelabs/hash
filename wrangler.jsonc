@@ -25,9 +25,11 @@
     "traces": { "enabled": true, "head_sampling_rate": 1 }
   },
   "vars": {
-    "ENVIRONMENT": "production",
-    "RATE_LIMIT_PEPPER": "development-only-pepper"
+    "ENVIRONMENT": "production"
   },
+  // RATE_LIMIT_PEPPER is a Worker secret. It is not stored in this file.
+  // Production: `npx wrangler secret put RATE_LIMIT_PEPPER`
+  // Local: `npm run dev` injects the development-only placeholder for that process.
   "durable_objects": {
     "bindings": [
       { "name": "SNIPPETS", "class_name": "SnippetObject" },

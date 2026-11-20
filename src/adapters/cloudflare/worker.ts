@@ -9,7 +9,7 @@ export { RateLimiter, SnippetObject };
 function runtimeFor(env: Env): HashRuntime {
   return {
     environment: parseEnvironment(env.ENVIRONMENT),
-    pepper: env.RATE_LIMIT_PEPPER,
+    pepper: env.RATE_LIMIT_PEPPER ?? "",
     store: {
       create: (record) => env.SNIPPETS.getByName(record.id).create(record),
       open: (id, now) => env.SNIPPETS.getByName(id).open(now),

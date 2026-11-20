@@ -1,4 +1,6 @@
 # syntax=docker/dockerfile:1
+# Node 22 LTS. better-sqlite3 publishes prebuilds for this line. Node 24 does not,
+# so the image, CI, and .nvmrc all stay on 22.
 
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
@@ -25,7 +27,7 @@ RUN groupadd --system --gid 65532 hash \
   && useradd --system --uid 65532 --gid 65532 --home-dir /tmp --shell /usr/sbin/nologin hash \
   && mkdir -p /data \
   && chown -R hash:hash /data /app
-COPY --from=build --chown=65532:65532 /app/package.json /app/package-lock.json ./
+COPY --from=build --chown=65532:65532 /app/package.json ./
 COPY --from=build --chown=65532:65532 /app/node_modules ./node_modules
 COPY --from=build --chown=65532:65532 /app/dist ./dist
 USER 65532:65532

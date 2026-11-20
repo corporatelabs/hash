@@ -1,0 +1,6 @@
+# Copy to .dev.vars for `wrangler dev` and `npm run dev`.
+# .dev.vars is gitignored and is not uploaded by `wrangler deploy`.
+# Do not put RATE_LIMIT_PEPPER in wrangler.jsonc vars. A deploy would
+# overwrite the production secret with this placeholder.
+ENVIRONMENT=development
+RATE_LIMIT_PEPPER=development-only-pepper

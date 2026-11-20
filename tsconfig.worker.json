@@ -21,6 +21,7 @@
   },
   "include": [
     "src/adapters/cloudflare/**/*.ts",
+    "src/adapters/cloudflare/**/*.d.ts",
     "src/core/**/*.ts",
     "src/shared/protocol.ts",
     "src/shared/bytes.ts",

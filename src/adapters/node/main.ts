@@ -2,7 +2,7 @@ import { SqliteBackend } from "../../storage/sqlite.js";
 import { RedisBackend } from "../../storage/redis.js";
 import { createFileServer } from "./static.js";
 import { startHttpServer } from "./server.js";
-import { parseEnvironment, type HashEnvironment } from "../../shared/protocol.js";
+import { DEV_PEPPER, parseEnvironment, type HashEnvironment } from "../../shared/protocol.js";
 import type { RateLimitStore, SnippetStore } from "../../core/store.js";
 
 interface Settings {
@@ -21,6 +21,9 @@ function readSettings(env: NodeJS.ProcessEnv): Settings {
   const environment = parseEnvironment(env.ENVIRONMENT);
   const pepper = env.RATE_LIMIT_PEPPER ?? "";
   if (pepper.length < 16) throw new Error("RATE_LIMIT_PEPPER must be at least 16 characters");
+  if (environment === "production" && pepper === DEV_PEPPER) {
+    throw new Error("Refusing to start in production with the development rate-limit pepper");
+  }
   const storage = env.STORAGE ?? "sqlite";
   if (storage !== "sqlite" && storage !== "redis") throw new Error("STORAGE must be sqlite or redis");
   const port = Number(env.PORT ?? "8080");

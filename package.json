@@ -6,10 +6,10 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": "22.x"
   },
   "scripts": {
-    "dev": "wrangler dev --var ENVIRONMENT:development",
+    "dev": "wrangler dev",
     "dev:node": "npm run build:server && ENVIRONMENT=development RATE_LIMIT_PEPPER=development-only-pepper STORAGE=sqlite DATABASE_PATH=./data/hash.sqlite PORT=8080 STATIC_ROOT=./dist/client node dist/server/adapters/node/main.js",
     "build:client": "node scripts/build-client.mjs",
     "build:server": "tsc -p tsconfig.server.json",

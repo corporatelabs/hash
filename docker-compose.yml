@@ -1,3 +1,5 @@
+# Local default is development plus the placeholder pepper.
+# Production must set ENVIRONMENT=production and a unique RATE_LIMIT_PEPPER.
 services:
   hash:
     build: .
