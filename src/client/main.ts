@@ -54,19 +54,25 @@ function shell(readout: string, panel: HTMLElement, title: string): void {
   main.tabIndex = -1;
   const skip = anchor("#main", copy.skip);
   skip.className = "skip";
+  const credit = el("footer", { className: "credit" }, anchor(copy.creditHref, copy.credit));
   app.replaceChildren(
     el(
       "div",
-      { className: "shell" },
-      skip,
+      { className: "page" },
       el(
-        "header",
-        { className: "brand" },
-        el("div", { className: "meta" }, el("span", { text: copy.brand }), el("span", { text: copy.version })),
-        el("h1", {}, el("span", { className: "mark", text: "#" }), document.createTextNode(copy.product)),
-        el("p", { className: "lede", text: copy.lede }),
+        "div",
+        { className: "shell" },
+        skip,
+        el(
+          "header",
+          { className: "brand" },
+          el("div", { className: "meta" }, el("span", { text: copy.brand }), el("span", { text: copy.version })),
+          el("h1", {}, el("span", { className: "mark", text: "#" }), document.createTextNode(copy.product)),
+          el("p", { className: "lede", text: copy.lede }),
+        ),
+        main,
       ),
-      main,
+      credit,
     ),
   );
 }

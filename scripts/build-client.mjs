@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, copyFile, rm } from "node:fs/promises";
 import path from "node:path";
 import esbuild from "esbuild";
 
 const root = path.resolve(import.meta.dirname, "..");
 const out = path.join(root, "dist", "client");
+await rm(path.join(out, "fonts"), { recursive: true, force: true });
 await mkdir(path.join(out, "fonts"), { recursive: true });
 await mkdir(path.join(out, ".well-known"), { recursive: true });
 
@@ -42,12 +43,17 @@ await esbuild.build({
 });
 
 const fonts = [
-  ["node_modules/@fontsource/newsreader/files/newsreader-latin-400-normal.woff2", "fonts/newsreader-400.woff2"],
-  ["node_modules/@fontsource/newsreader/files/newsreader-latin-600-normal.woff2", "fonts/newsreader-600.woff2"],
+  ["node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2", "fonts/plex-sans-400.woff2"],
+  ["node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-500-normal.woff2", "fonts/plex-sans-500.woff2"],
+  ["node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2", "fonts/plex-sans-600.woff2"],
   ["node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2", "fonts/plex-400.woff2"],
   ["node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2", "fonts/plex-500.woff2"],
 ];
-for (const [from, to] of fonts) {
+const fontLicenses = [
+  ["node_modules/@fontsource/ibm-plex-sans/LICENSE", "fonts/IBM-Plex-Sans-OFL.txt"],
+  ["node_modules/@fontsource/ibm-plex-mono/LICENSE", "fonts/IBM-Plex-Mono-OFL.txt"],
+];
+for (const [from, to] of [...fonts, ...fontLicenses]) {
   await copyFile(path.join(root, from), path.join(out, to));
 }
 await copyFile(path.join(root, "src/client/favicon.svg"), path.join(out, "favicon.svg"));

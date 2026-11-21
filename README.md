@@ -117,4 +117,4 @@ Publishing images waits on the `PUBLISH_ENABLED` variable. [RELEASING.md](RELEAS
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Fonts in the client are SIL Open Font License (Newsreader, IBM Plex Mono). Argon2 in the browser is [hash-wasm](https://github.com/Daninet/hash-wasm) (MIT).
+MIT. See [LICENSE](LICENSE). Fonts in the client are SIL Open Font License 1.1 (IBM Plex Sans, IBM Plex Mono). Argon2 in the browser is [hash-wasm](https://github.com/Daninet/hash-wasm) (MIT).
