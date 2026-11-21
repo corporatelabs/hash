@@ -36,4 +36,17 @@ describe("ui copy", () => {
     expect(copy.burnHint).toContain("one-time");
     expect(copy.openBurnWarning).toContain("one-time");
   });
+
+  it("drops the trailing period on short titles and status lines", () => {
+    expect(copy.copied.endsWith(".")).toBe(false);
+    expect(copy.hidden.endsWith(".")).toBe(false);
+    for (const [key, value] of Object.entries(copy)) {
+      if (!key.endsWith("Title") || typeof value !== "string") continue;
+      expect(value.endsWith("."), key).toBe(false);
+    }
+    expect(copy.burnHint.endsWith(".")).toBe(true);
+    expect(copy.differentChannel.endsWith(".")).toBe(true);
+    expect(copy.openBurnWarning.endsWith(".")).toBe(true);
+    expect(copy.howPoints.every((point) => point.endsWith("."))).toBe(true);
+  });
 });

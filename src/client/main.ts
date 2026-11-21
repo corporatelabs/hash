@@ -182,8 +182,9 @@ function renderCreate(): void {
   meter.optimum = 4;
   meter.value = 0;
   meter.setAttribute("aria-labelledby", "strength-label");
-  const meterLabel = el("span", { className: "meter-label", text: passwordStrength("").label });
+  const meterLabel = el("span", { className: "meter-label", text: copy.strengthIdle });
   meterLabel.id = "strength-label";
+  meter.setAttribute("aria-valuetext", copy.strengthIdle);
   const meterRow = el("div", { className: "meter" }, meter, meterLabel);
   const hint = el("p", { className: "hint", text: copy.strengthEmpty });
   hint.id = "strength-hint";
@@ -259,6 +260,13 @@ function renderCreate(): void {
   form.append(facts, secretLabel, passwordLabel, meterRow, hint, expiryField, burnRow, submit, status, error);
 
   const paintStrength = () => {
+    if (password.value.length === 0) {
+      meter.value = 0;
+      meterLabel.textContent = copy.strengthIdle;
+      meter.setAttribute("aria-valuetext", copy.strengthIdle);
+      hint.textContent = copy.strengthEmpty;
+      return;
+    }
     const score = passwordStrength(password.value);
     meter.value = score.score;
     meterLabel.textContent = score.label;
