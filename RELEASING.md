@@ -1,8 +1,8 @@
 # Releasing hash
 
-Nothing in this repository publishes itself. Image pushes, cosign signing, SBOM attestation, SLSA provenance, and release-please are skipped until the gates below are set. Leave them unset until you mean to publish. Do not change the repository from private to public as part of a normal deploy.
+Nothing in this repository publishes an image until the `PUBLISH_ENABLED` variable is `true`. The repository is public. Do not deploy the Worker from the optional section below unless you mean to.
 
-The hosted app is <https://hash.corporatelabs.ai>.
+The hosted app is <https://hash.corporatelabs.ai>. Images, when published, are `ghcr.io/corporatelabs/hash`.
 
 ## Self-hosted production
 
@@ -13,28 +13,49 @@ docker run -d --name hash -p 8080:8080 \
   -e ENVIRONMENT=production \
   -e RATE_LIMIT_PEPPER="$(openssl rand -base64 32)" \
   -v hash-data:/data \
-  hash
+  ghcr.io/corporatelabs/hash:latest
 ```
+
+Pin a version (`ghcr.io/corporatelabs/hash:1.0.0`) once that tag exists. `latest` moves on each non-prerelease release.
+
+Verify the signature:
+
+```bash
+cosign verify \
+  --certificate-identity-regexp '^https://github.com/corporatelabs/hash/\.github/workflows/publish\.yml@refs/tags/v.+' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  ghcr.io/corporatelabs/hash:latest
+```
+
+`docker compose up --build` builds this tree. It does not pull GHCR.
 
 ## Container publish
 
-All of these stay unset until you want images on GHCR and Docker Hub.
+GHCR is the registry. Docker Hub is optional and is skipped when its secrets are unset. That skip does not fail the job and does not block GHCR.
 
-| Name | Kind | Value |
-| --- | --- | --- |
-| `PUBLISH_ENABLED` | repository **variable** | `true` |
-| `DOCKERHUB_USERNAME` | repository **secret** | Docker Hub user that can push `corporatelabs/hash` |
-| `DOCKERHUB_TOKEN` | repository **secret** | Docker Hub access token |
+| Name | Kind | Required | Value |
+| --- | --- | --- | --- |
+| `PUBLISH_ENABLED` | repository **variable** | yes, to publish | `true` |
+| `DOCKERHUB_USERNAME` | repository **secret** | no | Docker Hub user, only if you also want `docker.io/corporatelabs/hash` |
+| `DOCKERHUB_TOKEN` | repository **secret** | no | Docker Hub token. Both Hub secrets must be set, or Hub is skipped. |
 
-Also:
+Repository settings, under Settings → Actions → General → Workflow permissions:
 
-- Create the Docker Hub repository `corporatelabs/hash` (or let the first push create it, if the account may do that).
-- `GITHUB_TOKEN` is provided by Actions. It can push to `ghcr.io/corporatelabs/hash`. No extra GHCR secret.
-- Cosign is keyless. It needs `id-token: write`, which the publish workflow already requests. Signatures are recorded in the public Rekor log. That log stores the digest, not the source.
-- The first publish should be a GitHub Release whose tag looks like `v1.0.0`, or a manual run of the Publish images workflow after `PUBLISH_ENABLED` is true. release-please only opens release PRs once that variable is `true`. `.release-please-manifest.json` already records `1.0.0`, so the next conventional commit after that becomes `1.0.1` or `1.1.0`. To have release-please open the `1.0.0` release itself, set the manifest to `0.0.0` before enabling it.
-- Multi-arch images are `linux/amd64` and `linux/arm64`. The workflow attaches an SPDX SBOM, signs both registries with cosign, and writes SLSA build provenance plus an SBOM attestation.
+- **Read and write permissions.** The default read-only token cannot create a release or push a package even when a workflow asks for more.
+- **Allow GitHub Actions to create and approve pull requests.** release-please opens the release pull request with `GITHUB_TOKEN`. `pull-requests: write` in the workflow is not enough without this checkbox.
 
-If `PUBLISH_ENABLED` is anything other than `true`, the release-please and publish jobs do not run. If it is `true` but either Docker Hub secret is empty, publish exits before pushing anywhere, including GHCR.
+No GHCR secret. The publish job logs in with `GITHUB_TOKEN` and requests `packages: write`. Cosign is keyless and uses `id-token: write`, which the workflow already requests. Signatures go to the public Rekor log. That log stores the digest, not the source. The job also writes an SPDX SBOM, a SLSA provenance attestation, and an SBOM attestation on the GHCR image. Images are `linux/amd64` and `linux/arm64`.
+
+After the first push, open the package at <https://github.com/corporatelabs/hash/pkgs/container/hash> and set its visibility to public if you want anonymous `docker pull`. A new GHCR package is private until you change that. This is the package, not the repository.
+
+What a merge does, and what it does not do:
+
+- Merging a pull request does not push an image while `PUBLISH_ENABLED` is unset. Both release-please and publish skip.
+- Setting the variable does not run a workflow by itself.
+- `.release-please-manifest.json` already records `1.0.0`. release-please treats that version as released. It does not open a `v1.0.0` release for the current tree. The next `feat` commit becomes `1.1.0`. The next `fix` becomes `1.0.1`. `docs` and `ci` commits do not open a release.
+- The next push to `main` after the variable is `true`, or a manual run of Release Please, opens a release pull request when there is a releasable commit. Merging that pull request creates the tag and the GitHub Release. The Publish images workflow then runs, because it listens for a published release, and pushes `ghcr.io/corporatelabs/hash:<version>`, `:<major>.<minor>`, and `:latest`.
+- To publish the current `main` as `1.0.0` without waiting for a later feature: after `PUBLISH_ENABLED` is `true`, publish the GitHub Release `v1.0.0` on `main` yourself. That is the event that pushes the image. To have release-please open the `1.0.0` pull request instead, set the manifest to `0.0.0` before that run.
+- A manual run of Publish images on `main` pushes `:latest` only. Version tags come from a release tag such as `v1.0.0`.
 
 ## Optional: Worker (Cloudflare)
 
@@ -65,9 +86,8 @@ Bindings, class names, and the `v1` migration are already in `wrangler.jsonc`. D
    npx wrangler deploy
    ```
 
-## What only works once the repository is public
+## Now that the repository is public
 
-- OpenSSF Scorecard (the workflow runs only when visibility is public). The badge in the README will not render usefully before that.
-- The OpenSSF Best Practices badge is a placeholder. After the repo is public, enroll at <https://www.bestpractices.dev/> and replace `PLACEHOLDER` in the README with the project id.
-- CodeQL and dependency review are in the workflows, and on this private repository they skip with a note. They run when the repository is public. On a private repository they need GitHub Advanced Security before they can scan.
-- GHCR packages for a private repository are private. Change the package to public only if you want anonymous pulls, after you are ready for the repo itself to be public.
+- OpenSSF Scorecard runs on every push to `main`, weekly, and on a manual run. It publishes the result that the README badge reads. The badge stays empty until that job succeeds once.
+- CodeQL and dependency review run on this public repository. They no longer take the private-repository skip.
+- TODO: OpenSSF Best Practices. Enroll the project at <https://www.bestpractices.dev/>. After you have a project id, add the badge to the README. Do not link a placeholder.

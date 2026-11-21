@@ -1,3 +1,5 @@
+# Build this tree: docker compose up --build
+# The published image is ghcr.io/corporatelabs/hash. This file does not pull it.
 # Local default is development plus the placeholder pepper.
 # Production must set ENVIRONMENT=production and a unique RATE_LIMIT_PEPPER.
 services:
