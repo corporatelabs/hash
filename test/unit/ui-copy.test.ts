@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { copy } from "../../src/client/copy.js";
 import { goneNotice, noticeForCode, wrongPasswordNotice } from "../../src/client/messages.js";
 import { formatAbsolute, formatRelative, waitPhrase } from "../../src/client/time.js";
 
@@ -25,5 +26,14 @@ describe("ui copy", () => {
     expect(missing.detail).toContain("cannot tell those apart");
     const fragment = noticeForCode("network", null, "create");
     expect(fragment.next.length).toBeGreaterThan(0);
+  });
+
+  it("keeps the hash name and credits Corporate Labs", () => {
+    expect(copy.product).toBe("hash");
+    expect(copy.brand).toBe("Corporate Labs");
+    expect(copy.credit).toBe("by Corporate Labs");
+    expect(copy.creditHref).toBe("https://corporatelabs.ai");
+    expect(copy.burnHint).toContain("one-time");
+    expect(copy.openBurnWarning).toContain("one-time");
   });
 });
