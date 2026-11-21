@@ -36,11 +36,26 @@ export default tseslint.config(
                 "wrangler/*",
                 "better-sqlite3",
                 "ioredis",
-                "hash-wasm",
                 "**/adapters/**",
                 "**/storage/**",
               ],
               message: "Core and shared crypto stay free of Cloudflare, Wrangler, adapters, and storage backends.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/core/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["cloudflare:*", "@cloudflare/*", "wrangler", "wrangler/*", "better-sqlite3", "ioredis", "hash-wasm", "**/adapters/**", "**/storage/**", "**/vendor/**"],
+              message: "The API core does not import crypto implementations, Cloudflare, adapters, or storage.",
             },
           ],
         },
