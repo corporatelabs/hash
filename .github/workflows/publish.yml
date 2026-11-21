@@ -17,6 +17,7 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      artifact-metadata: write
     steps:
       - uses: actions/checkout@v7
 
@@ -97,6 +98,7 @@ jobs:
           image: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
           format: spdx-json
           output-file: sbom.spdx.json
+          upload-release-assets: false
 
       - uses: actions/attest-build-provenance@v4
         with:
