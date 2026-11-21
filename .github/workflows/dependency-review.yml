@@ -20,7 +20,7 @@ jobs:
         id: review
         if: github.event.repository.visibility == 'public'
         continue-on-error: true
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
       - name: Fail on a real dependency finding
         if: github.event.repository.visibility == 'public' && steps.review.outcome == 'failure'
         env:
