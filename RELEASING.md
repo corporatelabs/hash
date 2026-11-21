@@ -89,5 +89,6 @@ Bindings, class names, and the `v1` migration are already in `wrangler.jsonc`. D
 ## Now that the repository is public
 
 - OpenSSF Scorecard runs on every push to `main`, weekly, and on a manual run. It publishes the result that the README badge reads. The badge stays empty until that job succeeds once.
-- CodeQL and dependency review run on this public repository. They no longer take the private-repository skip.
+- CodeQL runs on this public repository. It no longer takes the private-repository skip.
+- Dependency review scans only after Dependency graph is on: Settings → Code security and analysis → Dependency graph. Until then the workflow says so and does not fail the pull request. A real finding still fails the check once the graph is on.
 - TODO: OpenSSF Best Practices. Enroll the project at <https://www.bestpractices.dev/>. After you have a project id, add the badge to the README. Do not link a placeholder.
