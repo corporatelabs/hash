@@ -17,6 +17,6 @@ WebCrypto has no Argon2id. The envelope already shipped at https://hash.corporat
 
 ## Dev-only packages
 
-`wrangler`, Vitest, TypeScript, ESLint, esbuild, and the font packages are `devDependencies`. They are not in the container. The Newsreader and IBM Plex Mono files are copied into the client at build time and are SIL Open Font License. They are not runtime npm dependencies.
+`wrangler`, Vitest, TypeScript, ESLint, esbuild, and the font packages are `devDependencies`. `npm prune --omit=dev` removes those packages from the image. IBM Plex Sans and IBM Plex Mono (Copyright 2017–2019 IBM Corp.) are SIL Open Font License 1.1. The client build copies the latin woff2 subsets, plus each package's OFL text, from `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono` into `dist/client/fonts`, and that directory is what the image serves. Nothing is loaded from a CDN. These packages are not runtime npm dependencies.
 
 `npm ci --ignore-scripts` is what CI and the image build run. Nothing in the runtime path needs a package install script.

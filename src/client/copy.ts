@@ -50,6 +50,8 @@ export const copy = {
     "Deletes the ciphertext on the first open, before the password is checked. A wrong password destroys a one-time secret. Leave this off if the recipient might need another try.",
   create: "Create link",
   footerCreate: "No accounts. Lose the password or the link, and the secret is gone.",
+  credit: "by Corporate Labs",
+  creditHref: "https://corporatelabs.ai",
   progressKdf: "Deriving the key with Argon2id. This takes a few seconds. Stay on this page.",
   progressEncrypt: "Encrypting the secret in this browser.",
   progressUpload: "Uploading ciphertext. The password is not included.",
