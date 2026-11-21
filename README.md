@@ -2,7 +2,8 @@
 
 [![CI](https://github.com/corporatelabs/hash/actions/workflows/ci.yml/badge.svg)](https://github.com/corporatelabs/hash/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/corporatelabs/hash/badge)](https://scorecard.dev/viewer/?uri=github.com/corporatelabs/hash)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/PLACEHOLDER/badge)](https://www.bestpractices.dev/)
+[![License: MIT](https://img.shields.io/github/license/corporatelabs/hash)](https://github.com/corporatelabs/hash/blob/main/LICENSE)
+[![GHCR](https://img.shields.io/badge/ghcr.io-corporatelabs%2Fhash-2496ED)](https://github.com/corporatelabs/hash/pkgs/container/hash)
 
 Share a secret by a short link. The browser encrypts it. The server stores ciphertext only.
 
@@ -12,20 +13,30 @@ A hosted instance is at <https://hash.corporatelabs.ai>. Running it yourself is 
 
 ## Run it
 
-Node 22 is what the image, CI, and `.nvmrc` use. The container has no extra runtime packages. SQLite is Node's built-in `node:sqlite`.
+The published image is `ghcr.io/corporatelabs/hash`. Use a version tag, or `latest` for the newest non-prerelease release.
 
 ```bash
-docker build -t hash .
 docker run --rm -p 8080:8080 \
   -e ENVIRONMENT=development \
   -e RATE_LIMIT_PEPPER=development-only-pepper \
   -v hash-data:/data \
-  hash
+  ghcr.io/corporatelabs/hash:latest
 ```
 
 Open <http://127.0.0.1:8080>. The link you send uses the origin in the browser, so put the container behind the host name you want people to open.
 
-Compose is the same thing with a volume and a health check:
+Check the signature before you trust the image. The identity is the publish workflow on a release tag:
+
+```bash
+cosign verify \
+  --certificate-identity-regexp '^https://github.com/corporatelabs/hash/\.github/workflows/publish\.yml@refs/tags/v.+' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  ghcr.io/corporatelabs/hash:latest
+```
+
+A manual publish from `main` is signed as `@refs/heads/main` instead of a tag. The image is `linux/amd64` and `linux/arm64`. It has no extra runtime packages. SQLite is Node's built-in `node:sqlite`.
+
+Build this repository instead of pulling:
 
 ```bash
 docker compose up --build
@@ -49,7 +60,7 @@ For a host other than your laptop, set `ENVIRONMENT=production` and a unique `RA
 | `PORT` | `8080` | Listen port. |
 | `TRUST_PROXY` | unset | Set `true` only behind a proxy that overwrites `X-Forwarded-For`. Otherwise the socket address is the client. |
 
-`docker-compose.yml` sets `ENVIRONMENT=development` and the placeholder pepper so `docker compose up` works locally. Change both before you expose it.
+`docker-compose.yml` sets `ENVIRONMENT=development` and the placeholder pepper so `docker compose up --build` works locally. Change both before you expose it.
 
 ## How it works
 
@@ -102,9 +113,7 @@ npm run typecheck
 
 Node 22. `npm run dev:node` is the local server. Tests cover the crypto vector, SQLite, Redis (on `REDIS_URL`), the same HTTP checks against the Node server and the Worker, and a real encrypt/decrypt round trip. `scripts/check-core-boundary.mjs` fails if `src/core` or `src/shared` imports Cloudflare, Wrangler, an adapter, or a storage backend. [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
-Publishing images is gated. [RELEASING.md](RELEASING.md) lists the variable and secrets, which are intentionally unset.
-
-Scorecard and the Best Practices badge start working after the repository is public and, for Best Practices, after you replace `PLACEHOLDER` with the project id from <https://www.bestpractices.dev/>.
+Publishing images waits on the `PUBLISH_ENABLED` variable. [RELEASING.md](RELEASING.md) lists that switch. The Scorecard badge fills in after the Scorecard workflow publishes a result. The OpenSSF Best Practices badge is not linked yet. Enrollment is a manual step in that same document.
 
 ## License
 

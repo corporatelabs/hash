@@ -1,10 +1,12 @@
 name: OpenSSF Scorecard
 
+# Runs because the repository is public. A private repository skips the job.
 on:
   schedule:
     - cron: "30 1 * * 1"
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions: read-all
 

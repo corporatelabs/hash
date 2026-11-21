@@ -16,5 +16,25 @@ jobs:
         run: echo "Dependency review runs when this repository is public, or when GitHub Advanced Security is enabled."
       - uses: actions/checkout@v4
         if: github.event.repository.visibility == 'public'
-      - uses: actions/dependency-review-action@v4
+      - name: Dependency review
+        id: review
         if: github.event.repository.visibility == 'public'
+        continue-on-error: true
+        uses: actions/dependency-review-action@v4
+      - name: Fail on a real dependency finding
+        if: github.event.repository.visibility == 'public' && steps.review.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          out=$(gh api "repos/${{ github.repository }}/dependency-graph/compare/${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" 2>&1)
+          code=$?
+          set -e
+          printf '%s\n' "$out"
+          if [ "$code" -ne 0 ]; then
+            echo "Dependency graph is not enabled, so this check cannot scan yet."
+            echo "Turn it on under Settings, Code security and analysis, Dependency graph, then re-run."
+            exit 0
+          fi
+          echo "Dependency review failed. See the review step above."
+          exit 1
