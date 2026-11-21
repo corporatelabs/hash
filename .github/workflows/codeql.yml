@@ -22,7 +22,7 @@ jobs:
       - name: Private repository without code scanning
         if: github.event.repository.visibility != 'public'
         run: echo "CodeQL runs when this repository is public. Private repositories need GitHub Advanced Security."
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: github.event.repository.visibility == 'public'
       - uses: github/codeql-action/init@v3
         if: github.event.repository.visibility == 'public'

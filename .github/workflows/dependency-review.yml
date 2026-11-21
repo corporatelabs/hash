@@ -14,7 +14,7 @@ jobs:
       - name: Private repository without Advanced Security
         if: github.event.repository.visibility != 'public'
         run: echo "Dependency review runs when this repository is public, or when GitHub Advanced Security is enabled."
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: github.event.repository.visibility == 'public'
       - name: Dependency review
         id: review
