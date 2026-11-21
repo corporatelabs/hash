@@ -16,6 +16,9 @@ export function pepperProblem(environment: HashEnvironment, pepper: string): "sh
 }
 
 export async function rateBucket(pepper: string, ip: string, action: RateAction): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", utf8(`hash-v1\0${pepper}\0${action}\0${ip}`));
+  const encoded = utf8(`hash-v1\0${pepper}\0${action}\0${ip}`);
+  const input = new Uint8Array(encoded.byteLength);
+  input.set(encoded);
+  const digest = await crypto.subtle.digest("SHA-256", input);
   return `${action}:${bytesToBase64Url(new Uint8Array(digest))}`;
 }

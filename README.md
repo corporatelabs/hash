@@ -111,7 +111,7 @@ npm run lint
 npm run typecheck
 ```
 
-Node 22. `npm run dev:node` is the local server. Tests cover the crypto vector, SQLite, Redis (on `REDIS_URL`), the same HTTP checks against the Node server and the Worker, and a real encrypt/decrypt round trip. `scripts/check-core-boundary.mjs` fails if `src/core` or `src/shared` imports Cloudflare, Wrangler, an adapter, or a storage backend. [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Node 26. `npm run dev:node` is the local server. Tests cover the crypto vector, SQLite, Redis (on `REDIS_URL`), the same HTTP checks against the Node server and the Worker, and a real encrypt/decrypt round trip. `scripts/check-core-boundary.mjs` fails if `src/core` or `src/shared` imports Cloudflare, Wrangler, an adapter, or a storage backend. [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 Publishing images waits on the `PUBLISH_ENABLED` variable. [RELEASING.md](RELEASING.md) lists that switch. The Scorecard badge fills in after the Scorecard workflow publishes a result. The OpenSSF Best Practices badge is not linked yet. Enrollment is a manual step in that same document.
 

@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
-# Node 22 LTS. SQLite is node:sqlite, so the image does not compile a native module.
-# .nvmrc and CI stay on 22 with the runtime.
+# Node 26. SQLite is node:sqlite, so the image does not compile a native module.
+# .nvmrc and CI stay on 26 with the runtime.
 
-FROM node:22-bookworm-slim AS build
+FROM node:26-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci --ignore-scripts
@@ -10,7 +10,7 @@ COPY . .
 RUN npm run build:client && npm run build:server \
   && npm prune --omit=dev
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \

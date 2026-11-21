@@ -11,7 +11,7 @@ npm test
 npm run dev:node
 ```
 
-Node 22, from `.nvmrc`. `npm run dev:node` is the container's server on port 8080. Docker is the other way to run that same server: `docker compose up --build`.
+Node 26, from `.nvmrc`. `npm run dev:node` is the container's server on port 8080. Docker is the other way to run that same server: `docker compose up --build`.
 
 `npm run dev` is the optional Worker. It reads `.dev.vars` and does not upload it. Do not put `RATE_LIMIT_PEPPER` in `wrangler.jsonc`.
 
