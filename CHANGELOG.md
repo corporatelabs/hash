@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/corporatelabs/hash/compare/hash-v1.0.0...hash-v1.0.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* keep the release publish job on contents read ([#14](https://github.com/corporatelabs/hash/issues/14)) ([66c612f](https://github.com/corporatelabs/hash/commit/66c612f50582edbb5fa9558ec250d998875083fb))
+
 ## [1.0.0] - 2026-11-20
 
 ### Added
