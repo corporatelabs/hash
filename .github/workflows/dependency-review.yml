@@ -1,0 +1,20 @@
+name: dependency review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Private repository without Advanced Security
+        if: github.event.repository.visibility != 'public'
+        run: echo "Dependency review runs when this repository is public, or when GitHub Advanced Security is enabled."
+      - uses: actions/checkout@v4
+        if: github.event.repository.visibility == 'public'
+      - uses: actions/dependency-review-action@v4
+        if: github.event.repository.visibility == 'public'

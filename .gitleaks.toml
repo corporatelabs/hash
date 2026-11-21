@@ -1,0 +1,11 @@
+title = "hash gitleaks config"
+
+[allowlist]
+description = "Test vectors and the documented development-only rate-limit placeholder"
+paths = [
+  '''test/fixtures/envelope-v1\.json''',
+  '''(^|/)package-lock\.json$''',
+]
+regexes = [
+  '''development-only-pepper''',
+]
