@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
-# Node 22 LTS. better-sqlite3 publishes prebuilds for this line. Node 24 does not,
-# so the image, CI, and .nvmrc all stay on 22.
+# Node 22 LTS. SQLite is node:sqlite, so the image does not compile a native module.
+# .nvmrc and CI stay on 22 with the runtime.
 
 FROM node:22-bookworm-slim AS build
 WORKDIR /app

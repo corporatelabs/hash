@@ -29,7 +29,7 @@ flowchart LR
   browser -.->|"fragment stays in the URL hash"| browser
 ```
 
-The hosted deployment is a Cloudflare Worker at <https://hash.corporatelabs.ai>. The same API runs in a container you operate. Trust in the platform is different in those two places. The cryptography is the same.
+The way to run hash is a container you operate. The hosted deployment is an optional Cloudflare Worker at <https://hash.corporatelabs.ai>. Trust in the platform is different in those two places. The cryptography and the HTTP API are the same. `src/core` and `src/shared` do not import the Worker, and CI rejects that import.
 
 ## Crypto
 

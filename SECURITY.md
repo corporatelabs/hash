@@ -18,4 +18,4 @@ We aim to acknowledge a report within three business days. There is no bug bount
 
 ## Deployment expectations
 
-Production Workers must set `RATE_LIMIT_PEPPER` with `wrangler secret put`. The development placeholder is refused in production. Self-hosted production processes must set the same variable to a unique value of at least 16 characters.
+Self-hosted production must set `RATE_LIMIT_PEPPER` to a unique value of at least 16 characters. The development placeholder is refused in production. A production Worker, if you run one, sets the same secret with `wrangler secret put` and must not put it in `wrangler.jsonc` vars.

@@ -23,7 +23,7 @@
     "test:storage": "vitest run --config vitest.storage.config.ts",
     "test:worker": "vitest run --config vitest.worker.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "test": "node scripts/check-runtime-deps.mjs && node scripts/verify-vendor.mjs && npm run build:client && npm run test:unit && npm run test:storage && npm run test:worker && npm run test:e2e",
+    "test": "node scripts/check-runtime-deps.mjs && node scripts/verify-vendor.mjs && node scripts/check-core-boundary.mjs && npm run build:client && npm run test:unit && npm run test:storage && npm run test:worker && npm run test:e2e",
     "licenses": "node scripts/check-licenses.mjs"
   },
   "repository": {

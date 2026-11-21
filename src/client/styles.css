@@ -37,7 +37,7 @@
   --line: rgba(244, 241, 230, 0.14);
   --ink: #f4f1e6;
   --muted: #b0ae9f;
-  --faint: #8a887a;
+  --faint: #b4b2a4;
   --acid: #e4ff57;
   --acid-ink: #16180c;
   --danger: #ff5d3a;
@@ -247,6 +247,123 @@ meter {
   margin-top: 22px;
   color: var(--faint);
   font-size: 15px;
+}
+
+fieldset {
+  border: 0;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+legend {
+  padding: 0;
+}
+
+.facts {
+  margin: 0 0 18px;
+  padding-left: 1.15em;
+  color: var(--muted);
+}
+
+.facts li { margin: 0 0 6px; }
+
+.hint, .next, .warn, .copied {
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.hint { margin: 0 0 12px; color: var(--muted); }
+
+.next { color: var(--ink); }
+
+.warn {
+  border-left: 2px solid var(--acid);
+  margin: 0 0 12px;
+  padding-left: 12px;
+}
+
+.notice {
+  margin: 12px 0;
+}
+
+.notice p { margin: 0 0 6px; }
+
+.notice-title {
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.error-notice .notice-title { color: var(--danger); }
+
+.preview {
+  border-left: 2px solid var(--acid);
+  margin: 0 0 16px;
+  padding-left: 12px;
+}
+
+.preview p { margin: 6px 0 0; }
+
+.summary {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 0;
+}
+
+.summary div {
+  display: grid;
+  grid-template-columns: 7.5em minmax(0, 1fr);
+  gap: 10px;
+}
+
+.summary dt {
+  margin: 0;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.summary dd { margin: 0; }
+
+.copied {
+  min-height: 1.45em;
+  margin: 8px 0 0;
+  color: var(--ok);
+}
+
+.how {
+  margin-top: 28px;
+  color: var(--muted);
+}
+
+.how summary {
+  color: var(--acid);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.how a { color: var(--acid); }
+
+.skip {
+  position: absolute;
+  left: 12px;
+  top: -48px;
+  z-index: 2;
+  background: var(--acid);
+  color: var(--acid-ink);
+  padding: 8px 12px;
+}
+
+.skip:focus { top: 12px; }
+
+button:disabled, input:disabled, textarea:disabled { opacity: 0.55; }
+
+@media (max-width: 640px) {
+  .summary div { grid-template-columns: 1fr; gap: 2px; }
 }
 
 @media (max-width: 860px) {

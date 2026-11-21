@@ -1,4 +1,7 @@
-import { newSnippetId, openInBrowser, sealInBrowser } from "./bridge.js";
+import { newSnippetId, openInBrowser, sealInBrowser, type CryptoProgress } from "./bridge.js";
+import { copy } from "./copy.js";
+import { failureFromResponse, goneNotice, noticeFor, wrongPasswordNotice, type Notice, UiError } from "./messages.js";
+import { formatAbsolute, formatRelative } from "./time.js";
 import { parseFragment, parseSnippetPath, sharePath } from "../shared/link.js";
 import { passwordStrength, generatePassword } from "../shared/password.js";
 import {
@@ -28,21 +31,51 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-function shell(readout: string, panel: HTMLElement): void {
+function anchor(href: string, text: string): HTMLAnchorElement {
+  const node = document.createElement("a");
+  node.href = href;
+  node.textContent = text;
+  node.rel = "noreferrer";
+  return node;
+}
+
+function howItWorks(): HTMLElement {
+  const details = el("details", { className: "how" });
+  const list = el("ul", { className: "facts" });
+  for (const point of copy.howPoints) list.append(el("li", { text: point }));
+  details.append(el("summary", { text: copy.howSummary }), list, anchor(copy.threatModelHref, copy.threatModel));
+  return details;
+}
+
+function shell(readout: string, panel: HTMLElement, title: string): void {
+  document.title = title;
+  const main = el("main", { className: "panel" }, el("div", { className: "readout", text: readout }), panel, howItWorks());
+  main.id = "main";
+  main.tabIndex = -1;
+  const skip = anchor("#main", copy.skip);
+  skip.className = "skip";
   app.replaceChildren(
     el(
       "div",
       { className: "shell" },
+      skip,
       el(
         "header",
         { className: "brand" },
-        el("div", { className: "meta" }, el("span", { text: "Corporate Labs" }), el("span", { text: "v1" })),
-        el("h1", {}, el("span", { className: "mark", text: "#" }), document.createTextNode("hash")),
-        el("p", { className: "lede", text: "A short link for a secret the server is not allowed to read." }),
+        el("div", { className: "meta" }, el("span", { text: copy.brand }), el("span", { text: copy.version })),
+        el("h1", {}, el("span", { className: "mark", text: "#" }), document.createTextNode(copy.product)),
+        el("p", { className: "lede", text: copy.lede }),
       ),
-      el("section", { className: "panel" }, el("div", { className: "readout", text: readout }), panel),
+      main,
     ),
   );
+}
+
+function fillNotice(box: HTMLElement, notice: Notice): void {
+  box.replaceChildren();
+  box.append(el("p", { className: "notice-title", text: notice.title }));
+  if (notice.detail) box.append(el("p", { text: notice.detail }));
+  if (notice.next) box.append(el("p", { className: "next", text: notice.next }));
 }
 
 function bytesOf(value: string): number {
@@ -58,30 +91,82 @@ async function copyText(value: string): Promise<boolean> {
   }
 }
 
+function flashCopy(button: HTMLButtonElement, live: HTMLElement, value: string): void {
+  window.clearTimeout(Number(button.dataset.timer ?? "0"));
+  void copyText(value).then((ok) => {
+    live.textContent = ok ? copy.copied : copy.copyFailed;
+    const timer = window.setTimeout(() => {
+      live.textContent = "";
+    }, 2500);
+    button.dataset.timer = String(timer);
+  });
+}
+
+function setBusy(form: HTMLFormElement, busy: boolean): void {
+  form.setAttribute("aria-busy", busy ? "true" : "false");
+  for (const control of form.querySelectorAll("button, input, textarea")) {
+    if (control instanceof HTMLButtonElement || control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
+      control.disabled = busy;
+    }
+  }
+}
+
+function focusNotice(node: HTMLElement): void {
+  node.focus();
+}
+
+function strengthHint(password: string): string {
+  if (password.length === 0) return copy.strengthEmpty;
+  const score = passwordStrength(password).score;
+  if (score === 0) return copy.strengthTooWeak;
+  if (score === 1) return copy.strengthWeak;
+  if (score === 2) return copy.strengthOkay;
+  if (score === 3) return copy.strengthStrong;
+  return copy.strengthVery;
+}
+
 function renderCreate(): void {
   const form = el("form");
   form.noValidate = true;
+  form.setAttribute("aria-describedby", "guarantees");
+
+  const facts = el(
+    "ul",
+    { className: "facts" },
+    el("li", { text: copy.factPassword }),
+    el("li", { text: copy.factCiphertext }),
+    el("li", { text: copy.factRecovery }),
+    el("li", { text: copy.factBoth }),
+  );
+  facts.id = "guarantees";
+
   const secret = el("textarea");
+  secret.id = "secret";
   secret.required = true;
   secret.maxLength = MAX_PLAINTEXT_BYTES;
   secret.spellcheck = false;
   secret.autocomplete = "off";
-  secret.setAttribute("aria-label", "Secret");
-  secret.placeholder = "A token, a config fragment, a note.";
-  const counter = el("span", { className: "counter", text: "0 / 64 KB" });
-  const secretLabel = el("label", {}, el("span", {}, el("span", { text: "Secret" }), counter), secret);
+  secret.placeholder = copy.secretPlaceholder;
+  const counter = el("span", { className: "counter", text: copy.byteCount("0.0") });
+  const secretLabel = el("label", {}, el("span", {}, el("span", { text: copy.secretLabel }), counter), secret);
+  secretLabel.htmlFor = secret.id;
 
   const password = el("input");
+  password.id = "password";
   password.type = "password";
   password.autocomplete = "new-password";
   password.required = true;
-  password.setAttribute("aria-describedby", "strength-label");
-  const show = el("button", { className: "ghost", text: "Show" });
+  password.setAttribute("aria-describedby", "strength-label strength-hint");
+  const show = el("button", { className: "ghost", text: copy.show });
   show.type = "button";
-  const generate = el("button", { className: "ghost", text: "Generate" });
+  show.setAttribute("aria-pressed", "false");
+  show.setAttribute("aria-controls", password.id);
+  const generate = el("button", { className: "ghost", text: copy.generate });
   generate.type = "button";
+  generate.setAttribute("aria-label", copy.generateName);
   const passwordRow = el("div", { className: "password-row" }, password, show, generate);
-  const passwordLabel = el("label", {}, el("span", { text: "Password" }), passwordRow);
+  const passwordLabel = el("label", {}, el("span", { text: copy.passwordLabel }), passwordRow);
+  passwordLabel.htmlFor = password.id;
 
   const meter = document.createElement("meter");
   meter.min = 0;
@@ -90,104 +175,137 @@ function renderCreate(): void {
   meter.high = 3;
   meter.optimum = 4;
   meter.value = 0;
-  const meterLabel = el("span", { className: "meter-label", text: "Too weak" });
+  meter.setAttribute("aria-labelledby", "strength-label");
+  const meterLabel = el("span", { className: "meter-label", text: passwordStrength("").label });
   meterLabel.id = "strength-label";
   const meterRow = el("div", { className: "meter" }, meter, meterLabel);
+  const hint = el("p", { className: "hint", text: copy.strengthEmpty });
+  hint.id = "strength-hint";
 
   let expiry: ExpiryPresetId = DEFAULT_EXPIRY;
   const segment = el("div", { className: "segment" });
   segment.setAttribute("role", "radiogroup");
-  segment.setAttribute("aria-label", "Expiry");
-  for (const preset of EXPIRY_PRESETS) {
+  segment.setAttribute("aria-labelledby", "expiry-legend");
+  segment.setAttribute("aria-describedby", "expiry-hint");
+  const expiryButtons: HTMLButtonElement[] = [];
+  const selectExpiry = (index: number) => {
+    const preset = EXPIRY_PRESETS[index];
+    if (!preset) return;
+    expiry = preset.id;
+    expiryButtons.forEach((button, buttonIndex) => {
+      const selected = buttonIndex === index;
+      button.setAttribute("aria-checked", selected ? "true" : "false");
+      button.tabIndex = selected ? 0 : -1;
+    });
+  };
+  EXPIRY_PRESETS.forEach((preset, index) => {
     const button = el("button", { text: preset.label });
     button.type = "button";
     button.setAttribute("role", "radio");
     button.setAttribute("aria-checked", preset.id === expiry ? "true" : "false");
-    button.addEventListener("click", () => {
-      expiry = preset.id;
-      for (const child of segment.querySelectorAll("button")) child.setAttribute("aria-checked", "false");
-      button.setAttribute("aria-checked", "true");
-    });
+    button.tabIndex = preset.id === expiry ? 0 : -1;
+    button.addEventListener("click", () => selectExpiry(index));
+    expiryButtons.push(button);
     segment.append(button);
-  }
+  });
+  segment.addEventListener("keydown", (event) => {
+    const index = expiryButtons.indexOf(document.activeElement as HTMLButtonElement);
+    if (index < 0) return;
+    const key = event.key;
+    if (key !== "ArrowRight" && key !== "ArrowDown" && key !== "ArrowLeft" && key !== "ArrowUp" && key !== "Home" && key !== "End") {
+      return;
+    }
+    event.preventDefault();
+    let next = index;
+    if (key === "ArrowRight" || key === "ArrowDown") next = (index + 1) % expiryButtons.length;
+    if (key === "ArrowLeft" || key === "ArrowUp") next = (index - 1 + expiryButtons.length) % expiryButtons.length;
+    if (key === "Home") next = 0;
+    if (key === "End") next = expiryButtons.length - 1;
+    selectExpiry(next);
+    expiryButtons[next]?.focus();
+  });
+
+  const expiryHint = el("p", { className: "hint", text: copy.expiresHint });
+  expiryHint.id = "expiry-hint";
+  const legend = el("legend", { text: copy.expiresLegend });
+  legend.id = "expiry-legend";
+  const expiryField = el("fieldset", {}, legend, expiryHint, segment);
 
   const burn = el("input");
+  burn.id = "burn";
   burn.type = "checkbox";
-  const burnCopy = el(
-    "div",
-    {},
-    el("strong", { text: "Burn after the first view" }),
-    el(
-      "p",
-      {
-        className: "note",
-        text: "The ciphertext is deleted when it is fetched, before this page can try the password. A wrong password destroys a one-time secret. The server cannot tell those cases apart.",
-      },
-    ),
-  );
+  const burnCopy = el("div", {}, el("strong", { text: copy.burnTitle }), el("p", { className: "hint", text: copy.burnHint }));
   const burnRow = el("label", { className: "burn" }, burn, burnCopy);
+  burnRow.htmlFor = burn.id;
 
-  const submit = el("button", { className: "primary", text: "Create link" });
+  const submit = el("button", { className: "primary", text: copy.create });
   submit.type = "submit";
   const status = el("p", { className: "status" });
   status.setAttribute("role", "status");
-  const error = el("p", { className: "error" });
+  status.setAttribute("aria-live", "polite");
+  status.setAttribute("aria-atomic", "true");
+  status.tabIndex = -1;
+  const error = el("div", { className: "notice error-notice" });
   error.setAttribute("role", "alert");
+  error.tabIndex = -1;
+  error.hidden = true;
 
-  form.append(
-    secretLabel,
-    passwordLabel,
-    meterRow,
-    el("div", { className: "field-label", text: "Expires" }),
-    segment,
-    burnRow,
-    submit,
-    status,
-    error,
-    el("p", {
-      className: "footer",
-      text: "No accounts. No recovery. Lose the password or the link, and the secret is gone.",
-    }),
-  );
+  form.append(facts, secretLabel, passwordLabel, meterRow, hint, expiryField, burnRow, submit, status, error);
 
   const paintStrength = () => {
     const score = passwordStrength(password.value);
     meter.value = score.score;
     meterLabel.textContent = score.label;
+    meter.setAttribute("aria-valuetext", score.label);
+    hint.textContent = strengthHint(password.value);
   };
   password.addEventListener("input", paintStrength);
   secret.addEventListener("input", () => {
-    const size = bytesOf(secret.value);
-    counter.textContent = `${(size / 1024).toFixed(1)} / 64 KB`;
+    counter.textContent = copy.byteCount((bytesOf(secret.value) / 1024).toFixed(1));
+    secret.setAttribute("aria-invalid", "false");
   });
   show.addEventListener("click", () => {
     const hidden = password.type === "password";
     password.type = hidden ? "text" : "password";
-    show.textContent = hidden ? "Hide" : "Show";
+    show.textContent = hidden ? copy.hide : copy.show;
+    show.setAttribute("aria-pressed", hidden ? "true" : "false");
   });
   generate.addEventListener("click", () => {
     password.type = "text";
-    show.textContent = "Hide";
+    show.textContent = copy.hide;
+    show.setAttribute("aria-pressed", "true");
     password.value = generatePassword();
     paintStrength();
     password.focus();
   });
 
+  let busy = false;
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    error.textContent = "";
+    if (busy) return;
+    error.hidden = true;
+    secret.setAttribute("aria-invalid", "false");
+    password.setAttribute("aria-invalid", "false");
     const plain = secret.value;
     if (bytesOf(plain) === 0) {
-      error.textContent = "Write something to seal.";
+      secret.setAttribute("aria-invalid", "true");
+      error.hidden = false;
+      fillNotice(error, { title: copy.emptyTitle, detail: "", next: copy.emptyNext });
+      secret.focus();
       return;
     }
     if (bytesOf(plain) > MAX_PLAINTEXT_BYTES) {
-      error.textContent = "That secret is over 64 KB.";
+      secret.setAttribute("aria-invalid", "true");
+      error.hidden = false;
+      fillNotice(error, { title: copy.largeTitle, detail: copy.largeDetail, next: copy.largeNext });
+      focusNotice(error);
       return;
     }
-    const strength = passwordStrength(password.value);
-    if (strength.score === 0) {
-      error.textContent = "Use a longer password, or generate one. Short and common passwords are refused here.";
+    if (passwordStrength(password.value).score === 0) {
+      password.setAttribute("aria-invalid", "true");
+      error.hidden = false;
+      fillNotice(error, { title: copy.weakTitle, detail: copy.weakDetail, next: copy.weakNext });
+      password.focus();
       return;
     }
     const preset = EXPIRY_PRESETS.find((item) => item.id === expiry);
@@ -199,181 +317,245 @@ function renderCreate(): void {
       expiresAt: Date.now() + preset.ms,
       burnAfterRead: burn.checked,
     };
-    submit.disabled = true;
-    status.textContent = "Sealing in this browser…";
-    void sealAndCreate(snapshot)
+    busy = true;
+    setBusy(form, true);
+    status.textContent = copy.progressKdf;
+    focusNotice(status);
+    void sealAndCreate(snapshot, (stage) => {
+      if (stage === "kdf") status.textContent = copy.progressKdf;
+      if (stage === "encrypt") status.textContent = copy.progressEncrypt;
+      if (stage === "upload") status.textContent = copy.progressUpload;
+    })
       .then((url) => {
         renderSealed(url, snapshot.expiresAt, snapshot.burnAfterRead);
       })
       .catch((reason: unknown) => {
-        submit.disabled = false;
+        busy = false;
+        setBusy(form, false);
         status.textContent = "";
-        error.textContent = reason instanceof Error ? messageFor(reason.message) : "Could not create the link.";
+        error.hidden = false;
+        fillNotice(error, noticeFor(reason, "create"));
+        focusNotice(error);
       });
   });
 
-  shell("01  /  Seal", form);
+  shell(copy.readoutCreate, form, copy.titleCreate);
+  secret.focus();
 }
 
-async function sealAndCreate(input: {
-  plaintext: string;
-  password: string;
-  id: string;
-  expiresAt: number;
-  burnAfterRead: boolean;
-}): Promise<string> {
-  const sealed = await sealInBrowser(input);
-  const response = await fetch("/api/snippets", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      id: sealed.id,
-      ciphertext: sealed.ciphertext,
-      nonce: sealed.nonce,
-      salt: sealed.salt,
-      expiresAt: sealed.expiresAt,
-      burnAfterRead: sealed.burnAfterRead,
-      kdf: sealed.kdf,
-    }),
-  });
+async function sealAndCreate(
+  input: {
+    plaintext: string;
+    password: string;
+    id: string;
+    expiresAt: number;
+    burnAfterRead: boolean;
+  },
+  onProgress: (stage: CryptoProgress | "upload") => void,
+): Promise<string> {
+  const sealed = await sealInBrowser(input, onProgress);
+  onProgress("upload");
+  let response: Response;
+  try {
+    response = await fetch("/api/snippets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: sealed.id,
+        ciphertext: sealed.ciphertext,
+        nonce: sealed.nonce,
+        salt: sealed.salt,
+        expiresAt: sealed.expiresAt,
+        burnAfterRead: sealed.burnAfterRead,
+        kdf: sealed.kdf,
+      }),
+    });
+  } catch {
+    throw new UiError("network");
+  }
   const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(apiError(body, response.status));
+  if (!response.ok) throw failureFromResponse(response.status, body, response.headers.get("retry-after"));
   if (!isCreateResponse(body) || body.expiresAt !== sealed.expiresAt || body.burnAfterRead !== sealed.burnAfterRead) {
-    throw new Error("The server stored different metadata than the one sealed in this browser.");
+    throw new UiError("metadata");
   }
   const fragment = parseFragment(`#k=${sealed.fragment}`);
-  if (!fragment) throw new Error("invalid");
+  if (!fragment) throw new UiError("rejected");
   return new URL(sharePath(sealed.id, fragment), location.origin).toString();
+}
+
+function summaryList(expiresAt: number, burn: boolean): HTMLDListElement {
+  const list = el("dl", { className: "summary" });
+  const when = formatAbsolute(expiresAt);
+  const relative = formatRelative(expiresAt, Date.now());
+  list.append(
+    term(copy.summaryExpires, copy.expiryLine(when, relative)),
+    term(copy.summaryViews, burn ? copy.viewsOnce : copy.viewsAgain),
+    term(copy.summaryPassword, copy.differentChannel),
+  );
+  return list;
+}
+
+function term(name: string, value: string): HTMLDivElement {
+  return el("div", {}, el("dt", { text: name }), el("dd", { text: value }));
 }
 
 function renderSealed(url: string, expiresAt: number, burn: boolean): void {
   const field = el("input", { className: "link" });
+  field.id = "share-link";
   field.type = "text";
   field.readOnly = true;
   field.value = url;
-  const copy = el("button", { className: "primary", text: "Copy link" });
-  copy.type = "button";
-  copy.addEventListener("click", () => {
-    void copyText(url).then((ok) => {
-      copy.textContent = ok ? "Copied" : "Copy the field";
-    });
-  });
-  const again = el("button", { className: "ghost", text: "Seal another" });
+  const linkLabel = el("label", { className: "field-label", text: copy.linkLabel });
+  linkLabel.htmlFor = field.id;
+  const copied = el("p", { className: "copied" });
+  copied.setAttribute("role", "status");
+  copied.setAttribute("aria-live", "polite");
+  const copyButton = el("button", { className: "primary", text: copy.copyLink });
+  copyButton.type = "button";
+  copyButton.addEventListener("click", () => flashCopy(copyButton, copied, url));
+  const again = el("button", { className: "ghost", text: copy.sealAnother });
   again.type = "button";
   again.addEventListener("click", () => renderCreate());
+  const heading = el("h2", { text: copy.sealedTitle });
+  heading.tabIndex = -1;
   const panel = el(
     "div",
     {},
-    el("h2", { text: "Sealed" }),
-    el("p", {
-      className: "note",
-      text: "Send the whole link. The part after # never reaches the server, and it is not stored anywhere else.",
-    }),
+    heading,
+    el("p", { className: "note", text: copy.sealedNote }),
+    linkLabel,
     field,
-    el("div", { className: "result-actions" }, copy, again),
-    el("p", {
-      className: "fine",
-      text: `${burn ? "Burns on the first view. " : ""}Expires ${formatTime(expiresAt)}. A lost password cannot be reset.`,
-    }),
+    el("div", { className: "result-actions" }, copyButton, again),
+    copied,
+    summaryList(expiresAt, burn),
   );
-  shell("02  /  Link", panel);
-  field.focus();
+  shell(copy.readoutLink, panel, copy.titleLink);
+  heading.focus();
   field.select();
 }
 
 function renderOpen(id: string): void {
   const fragment = parseFragment(location.hash);
   if (!fragment) {
-    shell(
-      "00  /  Incomplete",
-      el(
-        "div",
-        {},
-        el("h2", { text: "This link is missing its key." }),
-        el("p", {
-          className: "note",
-          text: "The part after # is required to decrypt, and this server never had it. Ask for the full link.",
-        }),
-      ),
-    );
+    renderStopped(fragmentNotice());
     return;
   }
   const form = el("form");
   const password = el("input");
+  password.id = "open-password";
   password.type = "password";
   password.autocomplete = "current-password";
   password.required = true;
-  const submit = el("button", { className: "primary", text: "Open" });
+  const submit = el("button", { className: "primary", text: copy.openSubmit });
   submit.type = "submit";
+  const preview = el("div", { className: "preview" });
+  preview.hidden = true;
+  preview.setAttribute("aria-live", "polite");
   const status = el("p", { className: "status" });
   status.setAttribute("role", "status");
-  const error = el("p", { className: "error" });
+  status.setAttribute("aria-live", "polite");
+  status.setAttribute("aria-atomic", "true");
+  status.tabIndex = -1;
+  const error = el("div", { className: "notice error-notice" });
   error.setAttribute("role", "alert");
+  error.tabIndex = -1;
+  error.hidden = true;
+  const heading = el("h2", { text: copy.openTitle });
+  heading.tabIndex = -1;
   form.append(
-    el("h2", { text: "Sealed note" }),
-    el("p", {
-      className: "note",
-      text: "The password stays in this browser. Wrong passwords on a one-time link destroy it.",
-    }),
-    el("label", {}, el("span", { text: "Password" }), password),
+    heading,
+    el("p", { className: "note", text: copy.openStay }),
+    el("p", { className: "warn", text: copy.openBurnWarning }),
+    el("p", { className: "hint", text: copy.openExpiryUnknown }),
+    preview,
+    el("label", {}, el("span", { text: copy.passwordLabel }), password),
     submit,
     status,
     error,
   );
+  let busy = false;
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    error.textContent = "";
-    submit.disabled = true;
-    status.textContent = "Opening…";
+    if (busy) return;
+    error.hidden = true;
+    busy = true;
+    setBusy(form, true);
+    status.textContent = copy.progressFetch;
+    focusNotice(status);
     const typed = password.value;
-    void openSnippet(id, typed)
+    void openSnippet(id, typed, (stage) => {
+      if (stage === "kdf" || stage === "decrypt") status.textContent = stage === "kdf" ? copy.progressKdf : copy.progressDecrypt;
+    }, (envelope) => {
+      preview.hidden = false;
+      const when = formatAbsolute(envelope.expiresAt);
+      const relative = formatRelative(envelope.expiresAt, Date.now());
+      preview.replaceChildren(
+        envelope.burnAfterRead
+          ? el("div", {}, el("strong", { text: copy.previewOnceTitle }), el("p", { text: copy.previewOnce }), el("p", { className: "fine", text: copy.expiryLine(when, relative) }))
+          : el("p", { text: copy.previewAgain(when, relative) }),
+      );
+    })
       .then((result) => {
         if (result.kind === "gone") {
-          renderGone(result.reason);
+          renderStopped(goneNotice(result.reason));
           return;
         }
         if (result.kind === "bad") {
-          submit.disabled = false;
+          if (result.burned) {
+            renderStopped(wrongPasswordNotice(true));
+            return;
+          }
+          busy = false;
+          setBusy(form, false);
           status.textContent = "";
-          error.textContent = result.burned
-            ? "That password did not open it. This was a one-time secret, so the ciphertext is already gone."
-            : "That password did not open it.";
+          error.hidden = false;
+          fillNotice(error, wrongPasswordNotice(false));
+          focusNotice(error);
+          password.focus();
           return;
         }
         renderSecret(result.plaintext, result.burned, result.expiresAt);
       })
       .catch((reason: unknown) => {
-        submit.disabled = false;
+        busy = false;
+        setBusy(form, false);
         status.textContent = "";
-        error.textContent = reason instanceof Error ? messageFor(reason.message) : "Could not open the secret.";
+        error.hidden = false;
+        fillNotice(error, noticeFor(reason, "open"));
+        focusNotice(error);
       });
   });
-  shell("01  /  Open", form);
+  shell(copy.readoutOpen, form, copy.titleOpen);
   password.focus();
 }
 
 async function openSnippet(
   id: string,
   password: string,
+  onProgress: (stage: CryptoProgress) => void,
+  onEnvelope: (envelope: Envelope) => void,
 ): Promise<
   | { kind: "secret"; plaintext: string; burned: boolean; expiresAt: number }
   | { kind: "bad"; burned: boolean }
   | { kind: "gone"; reason: GoneReason }
 > {
-  const response = await fetch(`/api/snippets/${id}/open`, { method: "POST" });
-  const body: unknown = await response.json().catch(() => null);
-  if (response.status === 404 || response.status === 410) {
-    return { kind: "gone", reason: goneReason(body) };
+  let response: Response;
+  try {
+    response = await fetch(`/api/snippets/${id}/open`, { method: "POST" });
+  } catch {
+    throw new UiError("network");
   }
-  if (!response.ok || !isEnvelope(body)) throw new Error(apiError(body, response.status));
+  const body: unknown = await response.json().catch(() => null);
+  if (response.status === 404 || response.status === 410) return { kind: "gone", reason: goneReason(body) };
+  if (!response.ok || !isEnvelope(body)) throw failureFromResponse(response.status, body, response.headers.get("retry-after"));
   const fragment = parseFragment(location.hash);
   if (!fragment) return { kind: "gone", reason: "missing" };
+  onEnvelope(body);
   try {
-    const plaintext = await openInBrowser({
-      password,
-      fragment: location.hash.replace(/^#k=/, ""),
-      envelope: body,
-    });
+    const plaintext = await openInBrowser(
+      { password, fragment: location.hash.replace(/^#k=/, ""), envelope: body },
+      onProgress,
+    );
     return { kind: "secret", plaintext, burned: body.burnAfterRead, expiresAt: body.expiresAt };
   } catch (error) {
     if (error instanceof Error && error.message === "decrypt") return { kind: "bad", burned: body.burnAfterRead };
@@ -383,52 +565,58 @@ async function openSnippet(
 
 function renderSecret(plaintext: string, burned: boolean, expiresAt: number): void {
   const block = el("pre", { className: "secret", text: plaintext });
-  const copy = el("button", { className: "primary", text: "Copy secret" });
-  copy.type = "button";
-  copy.addEventListener("click", () => {
-    void copyText(plaintext).then((ok) => {
-      copy.textContent = ok ? "Copied" : "Select the text";
-    });
-  });
-  const hide = el("button", { className: "ghost", text: "Hide" });
+  block.tabIndex = 0;
+  block.setAttribute("aria-label", copy.secretLabel);
+  const copied = el("p", { className: "copied" });
+  copied.setAttribute("role", "status");
+  copied.setAttribute("aria-live", "polite");
+  const copyButton = el("button", { className: "primary", text: copy.copySecret });
+  copyButton.type = "button";
+  copyButton.addEventListener("click", () => flashCopy(copyButton, copied, plaintext));
+  const hide = el("button", { className: "ghost", text: copy.hideSecret });
   hide.type = "button";
   hide.addEventListener("click", () => {
-    block.textContent = "";
-    copy.disabled = true;
+    block.textContent = copy.hidden;
+    copyButton.disabled = true;
     hide.disabled = true;
   });
+  const heading = el("h2", { text: copy.plainTitle });
+  heading.tabIndex = -1;
+  const when = formatAbsolute(expiresAt);
+  const relative = formatRelative(expiresAt, Date.now());
   const panel = el(
     "div",
     {},
-    el("h2", { text: "Open" }),
-    burned ? el("p", { className: "ok", text: "This was a one-time secret. It is gone from the server." }) : el("p", { className: "fine", text: `Expires ${formatTime(expiresAt)}.` }),
+    heading,
+    burned
+      ? el("p", { className: "ok", text: copy.plainGone })
+      : el("p", { className: "fine", text: copy.plainStill(when, relative) }),
     block,
-    el("div", { className: "result-actions" }, copy, hide),
-    el("p", { className: "footer", text: "Clear it from this page when you are done. The clipboard is yours to wipe." }),
+    el("div", { className: "result-actions" }, copyButton, hide),
+    copied,
+    el("p", { className: "footer", text: copy.plainFooter }),
   );
-  shell("02  /  Plaintext", panel);
+  shell(copy.readoutPlain, panel, copy.titlePlain);
+  heading.focus();
 }
 
-function renderGone(reason: GoneReason): void {
-  const copy =
-    reason === "expired"
-      ? "This secret expired and was deleted."
-      : reason === "burned"
-        ? "This one-time secret was already opened."
-        : "There is no secret for this link.";
-  shell("00  /  Gone", el("div", {}, el("h2", { text: "Gone" }), el("p", { className: "note", text: copy })));
+function fragmentNotice(): Notice {
+  return { title: copy.fragmentTitle, detail: copy.fragmentDetail, next: copy.fragmentNext };
+}
+
+function renderStopped(notice: Notice): void {
+  const heading = el("h2", { text: notice.title });
+  heading.tabIndex = -1;
+  const panel = el("div", {}, heading);
+  if (notice.detail) panel.append(el("p", { className: "note", text: notice.detail }));
+  if (notice.next) panel.append(el("p", { className: "next", text: notice.next }));
+  panel.append(anchor("/", copy.home));
+  shell(copy.readoutStop, panel, copy.titleStopped);
+  heading.focus();
 }
 
 function renderMissing(): void {
-  shell("00  /  Gone", el("div", {}, el("h2", { text: "Gone" }), el("p", { className: "note", text: "This page does not exist." })));
-}
-
-function formatTime(ms: number): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC",
-  }).format(new Date(ms)) + " UTC";
+  renderStopped({ title: copy.notFoundTitle, detail: "", next: copy.notFoundNext });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -439,7 +627,7 @@ function isCreateResponse(value: unknown): value is { id: string; expiresAt: num
   return isRecord(value) && typeof value.expiresAt === "number" && typeof value.burnAfterRead === "boolean" && typeof value.id === "string";
 }
 
-function isEnvelope(value: unknown): value is {
+interface Envelope {
   id: string;
   ciphertext: string;
   nonce: string;
@@ -447,7 +635,9 @@ function isEnvelope(value: unknown): value is {
   expiresAt: number;
   burnAfterRead: boolean;
   kdf: KdfParams;
-} {
+}
+
+function isEnvelope(value: unknown): value is Envelope {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
@@ -467,26 +657,8 @@ function goneReason(value: unknown): GoneReason {
   return "missing";
 }
 
-function apiError(value: unknown, status: number): string {
-  if (isRecord(value) && value.error === "clock_skew") return "Your clock is more than a couple of minutes off. Check the time and try again.";
-  if (isRecord(value) && value.error === "rate_limited") return "Too many attempts from this network. Wait and try again.";
-  if (isRecord(value) && value.error === "misconfigured") return "This server is refusing new secrets until its rate-limit pepper is set.";
-  if (isRecord(value) && value.error === "unavailable") return "Storage is unavailable.";
-  if (status === 413) return "That secret is too large.";
-  return "The server rejected the request.";
-}
-
-function messageFor(code: string): string {
-  if (code === "empty") return "Write something to seal.";
-  if (code === "too_large") return "That secret is over 64 KB.";
-  if (code === "password") return "That password cannot be used.";
-  if (code === "timeout" || code === "worker") return "Encryption did not finish. Try again.";
-  if (code === "kdf") return "This note uses an unsupported encryption version.";
-  return code;
-}
-
 const pathId = parseSnippetPath(location.pathname);
 if (location.pathname === "/") renderCreate();
 else if (pathId) renderOpen(pathId);
-else if (location.pathname.startsWith("/s/")) renderGone("missing");
+else if (location.pathname.startsWith("/s/")) renderStopped(goneNotice("missing"));
 else renderMissing();

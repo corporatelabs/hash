@@ -66,6 +66,7 @@ async function onSeal(id: number, data: Record<string, unknown>): Promise<void> 
       id: data.snippetId,
       expiresAt: data.expiresAt,
       burnAfterRead: data.burnAfterRead,
+      onProgress: (stage) => post({ id, progress: stage }),
     });
     post({
       id,
@@ -115,6 +116,7 @@ async function onOpen(id: number, data: Record<string, unknown>): Promise<void> 
       expiresAt: envelope.expiresAt,
       burnAfterRead: envelope.burnAfterRead,
       kdf: KDF_V1,
+      onProgress: (stage) => post({ id, progress: stage }),
     });
     post({ id, ok: true, result: { plaintext } });
   } catch (error) {

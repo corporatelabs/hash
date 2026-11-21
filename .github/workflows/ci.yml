@@ -37,6 +37,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci --ignore-scripts
+      - run: node scripts/check-core-boundary.mjs
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test

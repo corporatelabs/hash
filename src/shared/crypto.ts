@@ -27,6 +27,9 @@ export class SealError extends Error {
   }
 }
 
+export type SealProgress = "kdf" | "encrypt";
+export type OpenProgress = "kdf" | "decrypt";
+
 export interface SealInput {
   plaintext: string;
   password: string;
@@ -39,6 +42,7 @@ export interface SealInput {
   kdf?: KdfParams;
   /** Test-only. The browser and the server both refuse a KDF other than v1. */
   allowWeakKdf?: boolean;
+  onProgress?: (stage: SealProgress) => void;
 }
 
 export interface Sealed {
@@ -64,6 +68,7 @@ export interface OpenInput {
   expiresAt: number;
   burnAfterRead: boolean;
   kdf: KdfParams;
+  onProgress?: (stage: OpenProgress) => void;
 }
 
 function copyBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
@@ -137,7 +142,9 @@ export async function seal(input: SealInput): Promise<Sealed> {
     p: kdf.p,
     hashLen: kdf.hashLen,
   });
+  input.onProgress?.("kdf");
   const aesKey = await deriveAesKey(input.password, salt, fragment, kdf);
+  input.onProgress?.("encrypt");
   try {
     const cryptoKey = await crypto.subtle.importKey("raw", aesKey, { name: "AES-GCM" }, false, ["encrypt"]);
     const ciphertext = new Uint8Array(
@@ -189,7 +196,9 @@ export async function openSecret(input: OpenInput): Promise<string> {
     p: input.kdf.p,
     hashLen: input.kdf.hashLen,
   });
+  input.onProgress?.("kdf");
   const aesKey = await deriveAesKey(input.password, input.salt, input.fragment, input.kdf);
+  input.onProgress?.("decrypt");
   try {
     const cryptoKey = await crypto.subtle.importKey("raw", aesKey, { name: "AES-GCM" }, false, ["decrypt"]);
     const plain = await crypto.subtle.decrypt(

@@ -4,7 +4,39 @@ Nothing in this repository publishes itself. Image pushes, cosign signing, SBOM 
 
 The hosted app is <https://hash.corporatelabs.ai>.
 
-## Worker (Cloudflare)
+## Self-hosted production
+
+The container is the deployment. Set `ENVIRONMENT=production` and a unique `RATE_LIMIT_PEPPER` of at least 16 characters. The development placeholder `development-only-pepper` is for `npm run dev:node` and `docker compose` on a laptop. The process refuses to start in production with that value or with a pepper shorter than 16 characters. SQLite is the default (`DATABASE_PATH=/data/hash.sqlite`). Redis is `STORAGE=redis` and `REDIS_URL`. Set `TRUST_PROXY=true` only behind a proxy that replaces `X-Forwarded-For`.
+
+```bash
+docker run -d --name hash -p 8080:8080 \
+  -e ENVIRONMENT=production \
+  -e RATE_LIMIT_PEPPER="$(openssl rand -base64 32)" \
+  -v hash-data:/data \
+  hash
+```
+
+## Container publish
+
+All of these stay unset until you want images on GHCR and Docker Hub.
+
+| Name | Kind | Value |
+| --- | --- | --- |
+| `PUBLISH_ENABLED` | repository **variable** | `true` |
+| `DOCKERHUB_USERNAME` | repository **secret** | Docker Hub user that can push `corporatelabs/hash` |
+| `DOCKERHUB_TOKEN` | repository **secret** | Docker Hub access token |
+
+Also:
+
+- Create the Docker Hub repository `corporatelabs/hash` (or let the first push create it, if the account may do that).
+- `GITHUB_TOKEN` is provided by Actions. It can push to `ghcr.io/corporatelabs/hash`. No extra GHCR secret.
+- Cosign is keyless. It needs `id-token: write`, which the publish workflow already requests. Signatures are recorded in the public Rekor log. That log stores the digest, not the source.
+- The first publish should be a GitHub Release whose tag looks like `v1.0.0`, or a manual run of the Publish images workflow after `PUBLISH_ENABLED` is true. release-please only opens release PRs once that variable is `true`. `.release-please-manifest.json` already records `1.0.0`, so the next conventional commit after that becomes `1.0.1` or `1.1.0`. To have release-please open the `1.0.0` release itself, set the manifest to `0.0.0` before enabling it.
+- Multi-arch images are `linux/amd64` and `linux/arm64`. The workflow attaches an SPDX SBOM, signs both registries with cosign, and writes SLSA build provenance plus an SBOM attestation.
+
+If `PUBLISH_ENABLED` is anything other than `true`, the release-please and publish jobs do not run. If it is `true` but either Docker Hub secret is empty, publish exits before pushing anywhere, including GHCR.
+
+## Optional: Worker (Cloudflare)
 
 Bindings, class names, and the `v1` migration are already in `wrangler.jsonc`. Do not rename `SNIPPETS`, `RATE_LIMITER`, `SnippetObject`, `RateLimiter`, or migration tag `v1`.
 
@@ -32,30 +64,6 @@ Bindings, class names, and the `v1` migration are already in `wrangler.jsonc`. D
    npm run build:client
    npx wrangler deploy
    ```
-
-## Container publish
-
-All of these stay unset until you want images on GHCR and Docker Hub.
-
-| Name | Kind | Value |
-| --- | --- | --- |
-| `PUBLISH_ENABLED` | repository **variable** | `true` |
-| `DOCKERHUB_USERNAME` | repository **secret** | Docker Hub user that can push `corporatelabs/hash` |
-| `DOCKERHUB_TOKEN` | repository **secret** | Docker Hub access token |
-
-Also:
-
-- Create the Docker Hub repository `corporatelabs/hash` (or let the first push create it, if the account may do that).
-- `GITHUB_TOKEN` is provided by Actions. It can push to `ghcr.io/corporatelabs/hash`. No extra GHCR secret.
-- Cosign is keyless. It needs `id-token: write`, which the publish workflow already requests. Signatures are recorded in the public Rekor log. That log stores the digest, not the source.
-- The first publish should be a GitHub Release whose tag looks like `v1.0.0`, or a manual run of the Publish images workflow after `PUBLISH_ENABLED` is true. release-please only opens release PRs once that variable is `true`. `.release-please-manifest.json` already records `1.0.0`, so the next conventional commit after that becomes `1.0.1` or `1.1.0`. To have release-please open the `1.0.0` release itself, set the manifest to `0.0.0` before enabling it.
-- Multi-arch images are `linux/amd64` and `linux/arm64`. The workflow attaches an SPDX SBOM, signs both registries with cosign, and writes SLSA build provenance plus an SBOM attestation.
-
-If `PUBLISH_ENABLED` is anything other than `true`, the release-please and publish jobs do not run. If it is `true` but either Docker Hub secret is empty, publish exits before pushing anywhere, including GHCR.
-
-## Self-hosted production
-
-Set `ENVIRONMENT=production` and a unique `RATE_LIMIT_PEPPER` of at least 16 characters. The development placeholder `development-only-pepper` is for `npm run dev` and `docker compose` on a laptop. The process refuses to start in production with that value. SQLite is the default. Redis is `STORAGE=redis` and `REDIS_URL`.
 
 ## What only works once the repository is public
 

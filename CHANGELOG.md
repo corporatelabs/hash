@@ -5,7 +5,7 @@
 ### Added
 
 - Browser encryption with Argon2id, HKDF, and AES-256-GCM. The URL fragment is a 256-bit secret and is not sent to the server.
-- A Hono API served by a Cloudflare Worker (Durable Objects) and by a Node container (SQLite or Redis).
+- One HTTP API. The container (SQLite, optional Redis) is the way to run it. A Cloudflare Worker with Durable Objects is optional.
 - One-time burn and expiry, with atomic delete on SQLite, Redis, and Durable Objects.
 - Tests, a pinned crypto vector, and a container image that refuses to boot in production without a real rate-limit pepper.
 
